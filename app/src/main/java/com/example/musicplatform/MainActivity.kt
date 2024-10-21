@@ -1,12 +1,11 @@
 package com.example.musicplatform
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.os.Bundle
-import android.util.LayoutDirection
 import android.util.Log
-import android.util.Size
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -18,15 +17,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentSize
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -44,89 +40,34 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Outline
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.musicplatform.ui.theme.MusicPlatformTheme
 import kotlinx.coroutines.delay
-import java.io.IOException
 
 
 class MainActivity : ComponentActivity() {
     private var mediaPlayer: MediaPlayer? = null
-    private val playedTracks = mutableStateListOf<Track>()
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         checkAndRequestPermissions()
         setContent {
             MusicPlatformTheme {
-                var currentTrack by remember { mutableStateOf<Track?>(null) }
-                var isPlayerExpanded by remember { mutableStateOf(false) }
-                var playingTrackIndex by remember { mutableIntStateOf(0) }
-
                 MusicAppScreen(
                     tracks = sampleTracks,
-                    onTrackClick = { track ->
-                        playTrack(track, currentTrack)
-                        currentTrack = track
-                        playingTrackIndex = sampleTracks.indexOfFirst { it.track == track.track }
-                        if (!playedTracks.contains(track)) {
-                            playedTracks.clear()
-                            playedTracks.add(track)
-                        }
-                    },
-                    currentTrack = currentTrack,
-                    playingTrackIndex = playingTrackIndex,
-                    onPlayingTrackIndexChange = { newIndex ->
-                        playingTrackIndex = newIndex
-                    },
-                    isPlayerExpanded = isPlayerExpanded,
-                    onExpandPlayer = { isPlayerExpanded = !isPlayerExpanded },
-                    mediaPlayer = mediaPlayer,
-                    playedTracks = playedTracks
+                    onTrackClickMain = { track, currentTrack -> playTrack(track, currentTrack) },
+                    mediaPlayer = mediaPlayer
                 )
             }
         }
 
-    }
-
-    private fun playTrack(track: Track, currentTrack: Track?) {
-        // Проверяем, является ли текущий трек тем же, который мы пытаемся воспроизвести
-        if (currentTrack?.track == track.track) {
-            // Если текущий трек такой же, просто воспроизводим его снова
-            mediaPlayer?.seekTo(0)
-            mediaPlayer?.start()
-        } else {
-            // Освобождаем ресурсы предыдущего трека
-            mediaPlayer?.release()
-            try {
-                // Создаем новый экземпляр MediaPlayer для нового трека
-                mediaPlayer = MediaPlayer.create(this, track.track)
-                mediaPlayer?.start()
-            } catch (e: IOException) {
-                Log.e("MediaPlayerError", "Ошибка воспроизведения трека: ${e.message}")
-                e.printStackTrace()
-            }
-        }
-    }
-
-
-    override fun onDestroy() {
-        super.onDestroy()
-        mediaPlayer?.release()
-        mediaPlayer = null
     }
 
     private fun checkAndRequestPermissions() {
@@ -138,6 +79,32 @@ class MainActivity : ComponentActivity() {
                 1
             )
         }
+    }
+
+    private fun playTrack(track: Track, currentTrack: Track?) {
+        // Останавливаем текущий трек, если он отличается от нового
+        if (currentTrack != null && currentTrack.track != track.track) {
+            mediaPlayer?.stop()
+            mediaPlayer?.release()
+            mediaPlayer = null
+        }
+
+        if (currentTrack?.track == track.track) {
+            mediaPlayer?.seekTo(0)        // Если тот же трек, перематываем на начало
+            mediaPlayer?.start()          // И воспроизводим
+        } else {
+            if(mediaPlayer == null) {
+                mediaPlayer = MediaPlayer.create(this, track.track)
+            }
+        }
+
+        mediaPlayer?.start()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        mediaPlayer?.release() // Освобождаем ресурсы MediaPlayer при завершении Activity
+        mediaPlayer = null
     }
 }
 
@@ -160,14 +127,8 @@ val sampleTracks = listOf(
 @Composable
 fun MusicAppScreen(
     tracks: List<Track>,
-    onTrackClick: (Track) -> Unit,
-    currentTrack: Track?,
-    playingTrackIndex: Int,
-    onPlayingTrackIndexChange: (Int) -> Unit,
-    isPlayerExpanded: Boolean,
-    onExpandPlayer: () -> Unit,
-    mediaPlayer: MediaPlayer?,
-    playedTracks: List<Track>
+    onTrackClickMain: (Track, Track?) -> Unit,
+    mediaPlayer: MediaPlayer?
 ) {
     val allTracks = remember { mutableStateListOf(*tracks.toTypedArray()) }
     var favouriteTracks by remember { mutableStateOf(listOf<Track>()) }
@@ -176,6 +137,11 @@ fun MusicAppScreen(
     var selectedItem by remember { mutableIntStateOf(0) }
     var isPlaying by remember { mutableStateOf(true) }
     var currentTime by remember { mutableIntStateOf(0) }
+
+    val playedTracks = remember { mutableStateListOf<Track>() }
+    var currentTrack by remember { mutableStateOf<Track?>(null) }
+    var isPlayerExpanded by remember { mutableStateOf(false) }
+    var playingTrackIndex by remember { mutableIntStateOf(0) }
 
     // Добавление или удаление трека из избранного
     val onFavouriteToggle: (Track) -> Unit = { track ->
@@ -190,8 +156,20 @@ fun MusicAppScreen(
         while (true) {
             delay(1000L) // Обновляем каждую секунду
             if (mediaPlayer?.isPlaying == true) {
-                currentTime = mediaPlayer.currentPosition / 1000
+                currentTime = mediaPlayer.currentPosition.div(1000)
             }
+        }
+    }
+
+    // Обработка клика по треку
+    val onTrackClick: (Track) -> Unit = { track ->
+        onTrackClickMain(track, currentTrack)
+        currentTrack = track              // Обновляем текущий трек
+        playingTrackIndex = tracks.indexOfFirst { it.track == track.track }
+
+        if (!playedTracks.contains(track)) {
+            playedTracks.clear()
+            playedTracks.add(track)
         }
     }
 
@@ -212,24 +190,24 @@ fun MusicAppScreen(
             nextIndex = (playingTrackIndex + 1) % currentTrackList.size
         } else {
             if (playedTracks.size == currentTrackList.size) {
-//                playedTracks.clear()
+                playedTracks.clear()
             }
 
             val remainingTracks = currentTrackList.filter { it !in playedTracks }
             val randomTrack = remainingTracks.random()
 
-//            playedTracks.add(randomTrack)
+            playedTracks.add(randomTrack)
             nextIndex = currentTrackList.indexOf(randomTrack)
         }
         // Сохраняем текущий трек в истории перед переключением
         if (trackHistory.isEmpty() || trackHistory.last() != playingTrackIndex) {
             trackHistory.add(playingTrackIndex)
         }
-        onPlayingTrackIndexChange(nextIndex)
+        playingTrackIndex = nextIndex
         if (!isPlaying) {
             isPlaying = true
         }
-        onTrackClick(tracks[nextIndex])
+        onTrackClick(currentTrackList[nextIndex])
     }
 
 // Функция для переключения на предыдущий трек
@@ -255,11 +233,12 @@ fun MusicAppScreen(
 //    }
     val onPrevTrack: () -> Unit = {
         val prevIndex = if (playingTrackIndex - 1 < 0) allTracks.size - 1 else (playingTrackIndex - 1)
-        onPlayingTrackIndexChange(prevIndex)
+        playingTrackIndex = prevIndex
         if (!isPlaying) {
             isPlaying = true
         }
-        onTrackClick(tracks[prevIndex])
+        onTrackClick(allTracks[prevIndex])
+//        playTrack(context, tracks[prevIndex])
     }
 
     // Устанавливаем слушатель завершения трека
@@ -271,6 +250,10 @@ fun MusicAppScreen(
 
     val onMixToggle: () -> Unit = {
         isRandomMode = !isRandomMode
+    }
+
+    val onExpandPlayer: () -> Unit = {
+        isPlayerExpanded = !isPlayerExpanded
     }
 
     // Функция для паузы или воспроизведения
@@ -862,27 +845,11 @@ fun BottomNavigationBar(selectedItem: Int, onItemSelected: (Int) -> Unit) {
 @Preview(showBackground = true)
 @Composable
 fun GreetingPreview() {
-    var mediaPlayer: MediaPlayer? = null
     MusicPlatformTheme {
-        var currentTrack by remember { mutableStateOf<Track?>(null) }
-        var isPlayerExpanded by remember { mutableStateOf(true) }
-        var playingTrackIndex by remember { mutableIntStateOf(0) }
-
         MusicAppScreen(
             tracks = sampleTracks,
-            onTrackClick = { track ->
-//                playTrack(track)
-                currentTrack = track
-            },
-            currentTrack = sampleTracks[0],
-            playingTrackIndex = playingTrackIndex,
-            onPlayingTrackIndexChange = { newIndex ->
-                playingTrackIndex = newIndex
-            },
-            isPlayerExpanded = isPlayerExpanded,
-            onExpandPlayer = { isPlayerExpanded = !isPlayerExpanded },
-            mediaPlayer = mediaPlayer,
-            playedTracks = sampleTracks
+            onTrackClickMain = { _, _ -> },
+            null
         )
     }
 }
