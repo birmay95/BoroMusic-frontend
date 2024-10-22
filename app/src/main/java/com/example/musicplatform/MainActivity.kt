@@ -1,11 +1,12 @@
 package com.example.musicplatform
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.os.Bundle
+import android.util.LayoutDirection
 import android.util.Log
+import android.util.Size
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -17,12 +18,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -40,34 +44,80 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.musicplatform.ui.theme.MusicPlatformTheme
 import kotlinx.coroutines.delay
+import java.io.IOException
 
 
 class MainActivity : ComponentActivity() {
     private var mediaPlayer: MediaPlayer? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         checkAndRequestPermissions()
         setContent {
             MusicPlatformTheme {
+                var currentTrack by remember { mutableStateOf<Track?>(null) }
+                var playingTrackIndex by remember { mutableIntStateOf(0) }
+
                 MusicAppScreen(
                     tracks = sampleTracks,
-                    onTrackClickMain = { track, currentTrack -> playTrack(track, currentTrack) },
+                    onTrackClickMain = { track ->
+                        playTrack(track, currentTrack)
+                        currentTrack = track
+                        playingTrackIndex = sampleTracks.indexOfFirst { it.track == track.track }
+                    },
+                    currentTrack = currentTrack,
+                    playingTrackIndex = playingTrackIndex,
+                    onPlayingTrackIndexChange = { newIndex ->
+                        playingTrackIndex = newIndex
+                    },
                     mediaPlayer = mediaPlayer
                 )
             }
         }
 
+    }
+
+    private fun playTrack(track: Track, currentTrack: Track?) {
+        // Проверяем, является ли текущий трек тем же, который мы пытаемся воспроизвести
+        if (currentTrack?.track == track.track) {
+            // Если текущий трек такой же, просто воспроизводим его снова
+            mediaPlayer?.seekTo(0)
+            mediaPlayer?.start()
+        } else {
+            // Освобождаем ресурсы предыдущего трека
+            mediaPlayer?.release()
+            try {
+                // Создаем новый экземпляр MediaPlayer для нового трека
+                mediaPlayer = MediaPlayer.create(this, track.track)
+                mediaPlayer?.start()
+            } catch (e: IOException) {
+                Log.e("MediaPlayerError", "Ошибка воспроизведения трека: ${e.message}")
+                e.printStackTrace()
+            }
+        }
+    }
+
+
+    override fun onDestroy() {
+        super.onDestroy()
+        mediaPlayer?.release()
+        mediaPlayer = null
     }
 
     private fun checkAndRequestPermissions() {
@@ -79,32 +129,6 @@ class MainActivity : ComponentActivity() {
                 1
             )
         }
-    }
-
-    private fun playTrack(track: Track, currentTrack: Track?) {
-        // Останавливаем текущий трек, если он отличается от нового
-        if (currentTrack != null && currentTrack.track != track.track) {
-            mediaPlayer?.stop()
-            mediaPlayer?.release()
-            mediaPlayer = null
-        }
-
-        if (currentTrack?.track == track.track) {
-            mediaPlayer?.seekTo(0)        // Если тот же трек, перематываем на начало
-            mediaPlayer?.start()          // И воспроизводим
-        } else {
-            if(mediaPlayer == null) {
-                mediaPlayer = MediaPlayer.create(this, track.track)
-            }
-        }
-
-        mediaPlayer?.start()
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        mediaPlayer?.release() // Освобождаем ресурсы MediaPlayer при завершении Activity
-        mediaPlayer = null
     }
 }
 
@@ -120,30 +144,31 @@ data class Track(
 val sampleTracks = listOf(
     Track("Mockingbird", "Eminem", R.raw.eminem_mockingbird, false),
     Track("Sweater Weather", "The Neighbourhood", R.raw.the_neighbourhood_sweater_weather, false),
-    Track("Superman", "Eminem feat. Dina Rae", R.raw.eminem_feat_dina_rae_superman, false),
+    Track("Superman", "Eminem", R.raw.eminem_feat_dina_rae_superman, false),
     Track("Можно я с тобой", "APSENT", R.raw.apsent_maybe_i_am_with_you, false)
 )
 
 @Composable
 fun MusicAppScreen(
     tracks: List<Track>,
-    onTrackClickMain: (Track, Track?) -> Unit,
-    mediaPlayer: MediaPlayer?
+    onTrackClickMain: (Track) -> Unit,
+    currentTrack: Track?,
+    playingTrackIndex: Int,
+    onPlayingTrackIndexChange: (Int) -> Unit,
+    mediaPlayer: MediaPlayer?,
 ) {
     val allTracks = remember { mutableStateListOf(*tracks.toTypedArray()) }
     var favouriteTracks by remember { mutableStateOf(listOf<Track>()) }
-    val trackHistory = mutableListOf<Int>()
-    var isRandomMode by remember { mutableStateOf(true) }
+    val trackHistory = remember { mutableListOf<Int>() }
+    var isRandomMode by remember { mutableStateOf(false) }
     var selectedItem by remember { mutableIntStateOf(0) }
+    var isRepeatTrack by remember { mutableIntStateOf(0) }
     var isPlaying by remember { mutableStateOf(true) }
     var currentTime by remember { mutableIntStateOf(0) }
 
-    val playedTracks = remember { mutableStateListOf<Track>() }
-    var currentTrack by remember { mutableStateOf<Track?>(null) }
     var isPlayerExpanded by remember { mutableStateOf(false) }
-    var playingTrackIndex by remember { mutableIntStateOf(0) }
+    val playedTracks = remember { mutableStateListOf<Track>() }
 
-    // Добавление или удаление трека из избранного
     val onFavouriteToggle: (Track) -> Unit = { track ->
         val index = allTracks.indexOf(track)
         if (index != -1) {
@@ -156,20 +181,8 @@ fun MusicAppScreen(
         while (true) {
             delay(1000L) // Обновляем каждую секунду
             if (mediaPlayer?.isPlaying == true) {
-                currentTime = mediaPlayer.currentPosition.div(1000)
+                currentTime = mediaPlayer.currentPosition / 1000
             }
-        }
-    }
-
-    // Обработка клика по треку
-    val onTrackClick: (Track) -> Unit = { track ->
-        onTrackClickMain(track, currentTrack)
-        currentTrack = track              // Обновляем текущий трек
-        playingTrackIndex = tracks.indexOfFirst { it.track == track.track }
-
-        if (!playedTracks.contains(track)) {
-            playedTracks.clear()
-            playedTracks.add(track)
         }
     }
 
@@ -178,73 +191,142 @@ fun MusicAppScreen(
         currentTime = newPosition // Обновляем состояние текущего времени
     }
 
-    // Функция для переключения на следующий трек
+    // Обработка клика по треку
+    val onTrackClick: (Track) -> Unit = { track ->
+        isPlaying = true
+        onTrackClickMain(track)
+        if (!playedTracks.contains(track)) {
+            playedTracks.clear()
+            playedTracks.add(track)
+        }
+    }
+
+// Функция для переключения на следующий трек
     val onNextTrack: () -> Unit = {
-        val nextIndex: Int
+        var nextIndex: Int
         val currentTrackList = if (selectedItem == 0) {
             allTracks
         } else {
             favouriteTracks
         }
-        if(!isRandomMode) {
-            nextIndex = (playingTrackIndex + 1) % currentTrackList.size
-        } else {
-            if (playedTracks.size == currentTrackList.size) {
-                playedTracks.clear()
+
+        when (isRepeatTrack) {
+            0 -> { // Режим: играются все треки
+                if (!isRandomMode) {
+                    nextIndex = (playingTrackIndex + 1) % currentTrackList.size
+                } else {
+                    if (playedTracks.size == currentTrackList.size) {
+                        playedTracks.clear()
+                    }
+
+                    val remainingTracks = currentTrackList.filter { it !in playedTracks }
+                    val randomTrack = remainingTracks.random()
+
+                    playedTracks.add(randomTrack)
+                    nextIndex = currentTrackList.indexOf(randomTrack)
+                }
+
+                // Сохраняем текущий трек в истории перед переключением
+                if (trackHistory.size > 20) {
+                    trackHistory.removeAt(0)
+                }
+                trackHistory.add(playingTrackIndex)
             }
+            1 -> { // Режим: играются треки только этого исполнителя
 
-            val remainingTracks = currentTrackList.filter { it !in playedTracks }
-            val randomTrack = remainingTracks.random()
+// Фильтруем треки, у которых имя артиста из currentTrack входит в список артистов трека
+// Фильтруем треки, у которых имя артиста из currentTrack входит в список артистов трека
+                val artistTracks = currentTrackList.filter { track ->
+                    currentTrack?.artist?.let { currentArtist ->
+                        val trackArtists = track.artist.split(Regex("[,;&]|\\sfeat\\.?\\s", RegexOption.IGNORE_CASE))
+                            .map { it.trim().lowercase() }
 
-            playedTracks.add(randomTrack)
-            nextIndex = currentTrackList.indexOf(randomTrack)
+                        // Лог для отладки списка артистов
+                        Log.d("artistTracksDebug", "Текущий трек: ${track.title}, Артисты: $trackArtists")
+
+                        // Проверяем, если имя текущего артиста встречается среди исполнителей трека
+                        trackArtists.any { it.contains(currentArtist.trim().lowercase(), ignoreCase = true) }
+                    } ?: false
+                }
+
+// Лог для отладки общего списка треков и списка треков от артиста
+                Log.d("artistTracks", "Общее количество треков: ${currentTrackList.size}")
+                Log.d("artistTracks", "Треки текущего артиста: ${artistTracks.size}")
+
+                val currentArtistTrackIndex = artistTracks.indexOf(currentTrack)
+
+                Log.d("currentArtistIndex", "текущий индекс: $currentArtistTrackIndex")
+
+                // Проверяем, существует ли следующий трек того же артиста
+                val nextIndexInArtistsTracks = if (artistTracks.isNotEmpty()) {
+                    (currentArtistTrackIndex + 1) % artistTracks.size
+                } else {
+                    playingTrackIndex // остаёмся на текущем треке, если нет других треков того же артиста
+                }
+
+                nextIndex = currentTrackList.indexOf(artistTracks[nextIndexInArtistsTracks])
+
+                // Сохраняем текущий трек в истории перед переключением
+                if (trackHistory.size > 20) {
+                    trackHistory.removeAt(0)
+                }
+                trackHistory.add(playingTrackIndex)
+            }
+            2 -> { // Режим: играется только текущий трек на повторе
+                nextIndex = playingTrackIndex
+            }
+            else -> {
+                // Если по какой-то причине режим не определен, играем следующий трек по умолчанию
+                nextIndex = (playingTrackIndex + 1) % currentTrackList.size
+            }
         }
-        // Сохраняем текущий трек в истории перед переключением
-        if (trackHistory.isEmpty() || trackHistory.last() != playingTrackIndex) {
-            trackHistory.add(playingTrackIndex)
-        }
-        playingTrackIndex = nextIndex
-        if (!isPlaying) {
-            isPlaying = true
-        }
-        onTrackClick(currentTrackList[nextIndex])
+
+        onPlayingTrackIndexChange(nextIndex)
+//        currentTrack = tracks[nextIndex] // Обновляем текущий трек
+        isPlaying = true
+        onTrackClick(tracks[nextIndex])
     }
+
+
 
 // Функция для переключения на предыдущий трек
-//    val onPrevTrack: () -> Unit = {
-//        if (trackHistory.isNotEmpty()) {
-//            // Убираем последний трек из истории (он уже проигран)
-//            trackHistory.removeAt(trackHistory.size - 1)
-//
-//            // Получаем индекс предыдущего трека из истории
-//            val prevIndex = if (trackHistory.isEmpty()) {
-//                // Если история пуста, то возвращаемся к последнему треку
-//                playingTrackIndex
-//            } else {
-//                trackHistory.last()
-//            }
-//
-//            onPlayingTrackIndexChange(prevIndex)
-//            if (!isPlaying) {
-//                isPlaying = true
-//            }
-//            onTrackClick(tracks[prevIndex])
-//        }
-//    }
     val onPrevTrack: () -> Unit = {
-        val prevIndex = if (playingTrackIndex - 1 < 0) allTracks.size - 1 else (playingTrackIndex - 1)
-        playingTrackIndex = prevIndex
-        if (!isPlaying) {
+//        Log.d("trackHistory", "Размер ${trackHistory.size}, prevINdex: ${trackHistory.last()}")
+
+        if (trackHistory.size >= 1) {
+
+//            Log.d("trackHistory", "Размер ${trackHistory.size}, prevINdex: ${trackHistory.last()}")
+
+            // Получаем индекс предыдущего трека из истории
+            val prevIndex = trackHistory.last()
+            // Убираем последний трек из истории (он уже проигран)
+            trackHistory.removeAt(trackHistory.size - 1)
+
+            // Устанавливаем предыдущий трек как текущий
+            onPlayingTrackIndexChange(prevIndex)
             isPlaying = true
+            onTrackClick(tracks[prevIndex])
+        } else {
+            // Если история пуста или содержит только один трек, остаёмся на текущем треке
+            onPlayingTrackIndexChange(playingTrackIndex)
+            isPlaying = true
+            onTrackClick(tracks[playingTrackIndex])
         }
-        onTrackClick(allTracks[prevIndex])
-//        playTrack(context, tracks[prevIndex])
     }
+
+//    val onPrevTrack: () -> Unit = {
+//        val prevIndex = if (playingTrackIndex - 1 < 0) allTracks.size - 1 else (playingTrackIndex - 1)
+//        onPlayingTrackIndexChange(prevIndex)
+//        if (!isPlaying) {
+//            isPlaying = true
+//        }
+//        onTrackClick(tracks[prevIndex])
+//    }
 
     // Устанавливаем слушатель завершения трека
     LaunchedEffect(mediaPlayer) {
         mediaPlayer?.setOnCompletionListener {
-            onNextTrack() // Переключаем на следующий трек
+            onNextTrack()
         }
     }
 
@@ -254,6 +336,12 @@ fun MusicAppScreen(
 
     val onExpandPlayer: () -> Unit = {
         isPlayerExpanded = !isPlayerExpanded
+    }
+
+    val onRepeatTrackChange: () -> Unit = {
+        isRepeatTrack++
+        if (isRepeatTrack == 3)
+            isRepeatTrack = 0
     }
 
     // Функция для паузы или воспроизведения
@@ -298,7 +386,9 @@ fun MusicAppScreen(
                 onSeekTo = onSeekTo,
                 onFavouriteToggle = onFavouriteToggle,
                 onMixToggle = onMixToggle,
-                isRandomMode = isRandomMode
+                isRandomMode = isRandomMode,
+                isRepeatTrack = isRepeatTrack,
+                onRepeatTrackChange = onRepeatTrackChange
             )
         }
 
@@ -325,7 +415,9 @@ fun MiniPlayer(
     onSeekTo: (Int) -> Unit,
     onFavouriteToggle: (Track) -> Unit,
     onMixToggle: () -> Unit,
-    isRandomMode: Boolean
+    isRandomMode: Boolean,
+    isRepeatTrack: Int,
+    onRepeatTrackChange: () -> Unit
 ) {
     if (isExpanded) {
         // Полноэкранный плеер
@@ -341,8 +433,10 @@ fun MiniPlayer(
             onSeekTo = onSeekTo,
             onFavouriteToggle = onFavouriteToggle,
             onMixToggle = onMixToggle,
-            isRandomMode = isRandomMode
-            )
+            isRandomMode = isRandomMode,
+            isRepeatTrack = isRepeatTrack,
+            onRepeatTrackChange = onRepeatTrackChange
+        )
     } else {
         val swipeThreshold = 100f
         var hasSwiped = false
@@ -433,7 +527,9 @@ fun FullPlayerScreen(
     onSeekTo: (Int) -> Unit, // Функция для изменения позиции воспроизведения
     onFavouriteToggle: (Track) -> Unit,
     onMixToggle: () -> Unit,
-    isRandomMode: Boolean
+    isRandomMode: Boolean,
+    isRepeatTrack: Int,
+    onRepeatTrackChange: () -> Unit
 ) {
     val swipeThreshold = 150f
     var hasSwiped = false
@@ -533,7 +629,7 @@ fun FullPlayerScreen(
                 onFavouriteToggle(track)
             },
                 modifier = Modifier.padding(top = 36.dp, start = 8.dp)
-                ) {
+            ) {
                 Icon(
                     painter = painterResource(if (track.favourite) R.drawable.ic_favourite_true else R.drawable.ic_favorite), // Замените на ваш значок воспроизведения
                     contentDescription = if (track.favourite) "Like" else "Not like",
@@ -600,6 +696,8 @@ fun FullPlayerScreen(
                     tint = if (isRandomMode) Color(0xFF8589AC) else Color.Black
                 )
             }
+            Spacer(modifier = Modifier.size(16.dp))
+
             IconButton(
                 onClick = onPrevTrack,
                 modifier = Modifier.size(50.dp)
@@ -638,6 +736,37 @@ fun FullPlayerScreen(
                     painterResource(id = R.drawable.ic_next),
                     contentDescription = "Next",
                     modifier = Modifier.size(40.dp)
+                )
+            }
+            Spacer(modifier = Modifier.size(16.dp))
+            IconButton(
+                onClick = onRepeatTrackChange,
+                modifier = Modifier.size(50.dp)
+            ){
+                Icon(
+                    painter = painterResource(
+                        when(isRepeatTrack) {
+                            0 -> R.drawable.ic_cycle
+                            1 -> R.drawable.ic_cycle
+                            2 -> R.drawable.ic_cycle_track
+                            else -> { R.drawable.ic_cycle}
+                        }
+                    ),
+                    contentDescription =
+                    when(isRepeatTrack) {
+                        0 -> "Not repeat"
+                        1 -> "Repeat artist"
+                        2 -> "Repeat track"
+                        else -> { "Not repeat" }
+                    },
+                    modifier = Modifier.size(40.dp),
+                    tint =
+                    when(isRepeatTrack) {
+                        0 -> Color.Black
+                        1 -> Color(0xFF8589AC)
+                        2 -> Color(0xFF8589AC)
+                        else -> { Color.Black }
+                    },
                 )
             }
         }
@@ -845,11 +974,22 @@ fun BottomNavigationBar(selectedItem: Int, onItemSelected: (Int) -> Unit) {
 @Preview(showBackground = true)
 @Composable
 fun GreetingPreview() {
+    val mediaPlayer: MediaPlayer? = null
     MusicPlatformTheme {
+        var currentTrack by remember { mutableStateOf<Track?>(null) }
+        var playingTrackIndex by remember { mutableIntStateOf(0) }
+
         MusicAppScreen(
             tracks = sampleTracks,
-            onTrackClickMain = { _, _ -> },
-            null
+            onTrackClickMain = { track ->
+                currentTrack = track
+            },
+            currentTrack = sampleTracks[0],
+            playingTrackIndex = playingTrackIndex,
+            onPlayingTrackIndexChange = { newIndex ->
+                playingTrackIndex = newIndex
+            },
+            mediaPlayer = mediaPlayer
         )
     }
 }
