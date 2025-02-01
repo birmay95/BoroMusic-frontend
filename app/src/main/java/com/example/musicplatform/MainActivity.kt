@@ -1,6 +1,7 @@
 package com.example.musicplatform
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
 import android.os.Bundle
@@ -10,9 +11,11 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.annotation.OptIn
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloatAsState
@@ -23,7 +26,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,7 +42,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.*
@@ -50,18 +51,20 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -74,17 +77,24 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
 import com.example.musicplatform.ui.theme.MusicPlatformTheme
 import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.io.File
 import java.io.IOException
+//import com.google.android.exoplayer2.C
 
 
 class MainActivity : ComponentActivity() {
-    private var mediaPlayer: MediaPlayer? = null
+//    private var mediaPlayer: MediaPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,13 +120,12 @@ class MainActivity : ComponentActivity() {
                 } else {
                     MusicAppScreen(
                         onTrackClickMain = { track ->
-                            playTrack(track, currentTrack)
                             currentTrack = track
                             playingTrackIndex = currentTrackList.indexOfFirst { it.track == track.track }
                         },
                         currentTrack = currentTrack,
                         playingTrackIndex = playingTrackIndex,
-                        mediaPlayer = mediaPlayer,
+//                        mediaPlayer = mediaPlayer,
                         currentTrackList = currentTrackList,
                         onChangeCurTrackList = { curList ->
                             currentTrackList = curList
@@ -126,34 +135,33 @@ class MainActivity : ComponentActivity() {
                             isLoggedIn = false
                             token = null
                         },
-                        apiClient = apiClient
+                        apiClient = apiClient,
+                        context = context
                     )
                 }
             }
         }
     }
 
-    private fun playTrack(track: Track, currentTrack: Track?) {
-        if (currentTrack?.track == track.track) {
-            mediaPlayer?.seekTo(0)
-            mediaPlayer?.start()
-        } else {
-            mediaPlayer?.release()
-            try {
-                mediaPlayer = MediaPlayer.create(this, track.track)
-                mediaPlayer?.start()
-            } catch (e: IOException) {
-                Log.e("MediaPlayerError", "Ошибка воспроизведения трека: ${e.message}")
-                e.printStackTrace()
-            }
-        }
-    }
+//    private fun playTrackFromFile(file: File) {
+//        mediaPlayer?.release()
+//        mediaPlayer = MediaPlayer()
+//
+//        try {
+//            mediaPlayer?.setDataSource(file.absolutePath)
+//            mediaPlayer?.prepare()
+//            mediaPlayer?.start()
+//        } catch (e: IOException) {
+//            Log.e("MediaPlayerError", "Ошибка воспроизведения: ${e.message}")
+//        }
+//    }
+
 
 
     override fun onDestroy() {
         super.onDestroy()
-        mediaPlayer?.release()
-        mediaPlayer = null
+//        mediaPlayer?.release()
+//        mediaPlayer = null
     }
 
     private fun checkAndRequestPermissions() {
@@ -204,7 +212,8 @@ data class Track(
     val genres: List<Genre> = emptyList(),
     val playlists: List<Playlist> = emptyList(),
     var favourite: Boolean = false,
-    var track: Int = 0
+    var track: Int = 0,
+    var rotation: Animatable<Float, AnimationVector1D> = Animatable(0f)
 )
 
 fun mapServerTrackToTrack(serverTrack: ServerTrack, favourite: Boolean, track: Int): Track {
@@ -220,7 +229,8 @@ fun mapServerTrackToTrack(serverTrack: ServerTrack, favourite: Boolean, track: I
         genres = serverTrack.genres ?: emptyList(), // Используйте пустой список по умолчанию
         playlists = serverTrack.playlists ?: emptyList(), // Используйте пустой список по умолчанию
         favourite = favourite,
-        track = track
+        track = track,
+        rotation = Animatable(0f)
     )
 }
 
@@ -274,16 +284,18 @@ data class Genre(
 //var samplePlaylists: MutableList<Playlist> = mutableListOf()
 //var sampleTracks: MutableList<Track> = mutableListOf()
 
+@OptIn(UnstableApi::class)
 @Composable
 fun MusicAppScreen(
     onTrackClickMain: (Track) -> Unit,
     currentTrack: Track?,
     playingTrackIndex: Int,
-    mediaPlayer: MediaPlayer?,
+//    mediaPlayer: MediaPlayer?,
     currentTrackList: List<Track>,
     onChangeCurTrackList: (List<Track>) -> Unit,
     onLogoutSuccess: () -> Unit,
-    apiClient: ApiClient
+    apiClient: ApiClient,
+    context: Context
 ) {
     val viewModel: MyViewModel = viewModel()
     LaunchedEffect(Unit) {
@@ -294,10 +306,10 @@ fun MusicAppScreen(
     var favouriteTracks by remember { mutableStateOf(viewModel.sampleTracks.filter { it.favourite }) }
     val trackHistory = remember { mutableListOf<Int>() }
     var isRandomMode by remember { mutableStateOf(false) }
-    var selectedItem by remember { mutableIntStateOf(0) }
+    var selectedItem by remember { mutableIntStateOf(2) }
     var isRepeatTrack by remember { mutableIntStateOf(0) }
     var isPlaying by remember { mutableStateOf(true) }
-    var currentTime by remember { mutableIntStateOf(0) }
+    var currentTime by remember { mutableLongStateOf(0) }
 
     var isPlayerExpanded by remember { mutableStateOf(false) }
     val playedTracks = remember { mutableStateListOf<Track>() }
@@ -313,13 +325,97 @@ fun MusicAppScreen(
         currentPlaylist = newIndex
     }
 
+    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var player by remember { mutableStateOf<ExoPlayer?>(null) }
+
+
+    fun playTrack(track: Track, currentTrack: Track?, file: File) {
+        if (currentTrack?.track == track.track) {
+            mediaPlayer?.seekTo(0)
+            mediaPlayer?.start()
+        } else {
+            mediaPlayer?.release()
+            mediaPlayer = MediaPlayer()
+            try {
+//                mediaPlayer = MediaPlayer.create(this, track.track)
+//                mediaPlayer?.start()
+                mediaPlayer?.setDataSource(file.absolutePath)
+                mediaPlayer?.prepare()
+                mediaPlayer?.start()
+            } catch (e: IOException) {
+                Log.e("MediaPlayerError", "Ошибка воспроизведения трека: ${e.message}")
+                e.printStackTrace()
+            }
+        }
+    }
+
+//    fun playTrackFromServer(track: Track, currentTrack: Track?, fileName: String) {
+//        CoroutineScope(Dispatchers.IO).launch {
+//            try {
+//                val response = apiClient.trackApiService.downloadFileStream(fileName).execute()
+//
+//                if (response.isSuccessful) {
+//                    response.body()?.let { body ->
+//                        val tempFile = File.createTempFile("track", ".mp3")
+//
+//                        body.byteStream().use { inputStream ->
+//                            FileOutputStream(tempFile).use { outputStream ->
+//                                inputStream.copyTo(outputStream)
+//                            }
+//                        }
+//
+//                        withContext(Dispatchers.Main) {
+//                            playTrack(track, currentTrack, tempFile)
+//                        }
+//                    }
+//                } else {
+//                    Log.e("DownloadError", "Ошибка загрузки трека")
+//                }
+//            } catch (e: IOException) {
+//                Log.e("NetworkError", "Ошибка запроса: ${e.message}")
+//            }
+//        }
+//    }
+
+    val playTrackFromServer = { track: Track, fileName: String ->
+        CoroutineScope(Dispatchers.Main).launch {
+            try {
+                val url = "http://192.168.100.12:8080/tracks/download/$fileName"
+                Log.d("ExoPlayer", "Запуск воспроизведения: $fileName")
+
+                if (player == null) {
+                    player = ExoPlayer.Builder(context).build()
+                } else {
+                    player?.stop()
+                    player?.clearMediaItems()
+                }
+
+                val mediaItem = MediaItem.fromUri(url)
+                player?.setMediaItem(mediaItem)
+                player?.prepare()
+                player?.play()
+
+            } catch (e: Exception) {
+                Log.e("NetworkError", "Ошибка загрузки потока: ${e.message}")
+            }
+        }
+    }
+
+
+
+
 // доделать с плейлистами, чтобы пробегаться по им всем и убирать оттуда сердечко
     val onFavouriteToggle: (Track) -> Unit = { track ->
         Log.d("OnFavouriteToggle", "Toggling favourite for track: ${track.id}")
-
-        val updatedTrack = track.copy(favourite = !track.favourite, playlists = track.playlists ?: listOf(), genres = track.genres ?: listOf())
+        Log.d("rotationnn", "track rotation in fav: ${track.rotation.value}")
+        val updatedTrack = track.copy(
+            favourite = !track.favourite,
+            playlists = track.playlists ?: listOf(),
+            genres = track.genres ?: listOf(),
+            rotation = track.rotation
+        )
         Log.d("OnFavouriteToggle", "Updated track: $updatedTrack")
-
+        Log.d("rotationnn", "updtrack rotation in fav: ${updatedTrack.rotation.value}")
         val index = viewModel.sampleTracks.indexOfFirst { it.id == track.id }
         Log.d("OnFavouriteToggle", "Track index in sampleTracks: $index")
 
@@ -335,7 +431,7 @@ fun MusicAppScreen(
             val updatedTracks = playlist.tracks.map { playlistTrack ->
                 if (playlistTrack.id == track.id) {
                     Log.d("OnFavouriteToggle", "Updating track in playlist: ${playlistTrack.id}")
-                    playlistTrack.copy(favourite = !playlistTrack.favourite, playlists = playlistTrack.playlists ?: listOf(), genres = playlistTrack.genres ?: listOf()) // Обеспечьте, чтобы playlists не было null
+                    playlistTrack.copy(favourite = !playlistTrack.favourite, playlists = playlistTrack.playlists ?: listOf(), genres = playlistTrack.genres ?: listOf(), rotation = playlistTrack.rotation ?: Animatable(0f)) // Обеспечьте, чтобы playlists не было null
                 } else {
                     playlistTrack
                 }
@@ -350,28 +446,26 @@ fun MusicAppScreen(
         Log.d("OnFavouriteToggle", "Updated favouriteTracks: $favouriteTracks")
     }
 
-
-    LaunchedEffect(mediaPlayer) {
+// Обновление текущего времени каждую секунду
+    LaunchedEffect(player) {
         while (true) {
             delay(1000L) // Обновляем каждую секунду
-
-            // Проверяем, что mediaPlayer не равен null и готов к воспроизведению
-            if (mediaPlayer != null && isPlaying) {
+            if (player?.isPlaying == true) {
                 try {
-                    currentTime = mediaPlayer.currentPosition / 1000
+                    currentTime =
+                        (player?.currentPosition ?: 0L) / 1000L // Получаем текущую позицию в секундах
                 } catch (e: IllegalStateException) {
-                    // Логируем ошибку для диагностики
-                    Log.e("MusicAppScreen", "MediaPlayer is in an invalid state: ${e.message}")
+                    Log.e("MusicAppScreen", "ExoPlayer is in an invalid state: ${e.message}")
                     break // Останавливаем цикл, если произошла ошибка
                 }
             }
         }
     }
 
-
+// Обработчик для перемотки
     val onSeekTo: (Int) -> Unit = { newPosition ->
-        mediaPlayer?.seekTo(newPosition * 1000) // Переводим позицию в миллисекунды
-        currentTime = newPosition // Обновляем состояние текущего времени
+        player?.seekTo(newPosition * 1000L) // Переводим позицию в миллисекунды
+        currentTime = newPosition.toLong() // Обновляем состояние текущего времени
     }
 
     val onTrackClick: (Track) -> Unit = { track ->
@@ -382,6 +476,7 @@ fun MusicAppScreen(
         }
         onChangeCurTrackList(curTrackList)
         isPlaying = true
+        playTrackFromServer(track, track.fileName)
         onTrackClickMain(track)
         if (!playedTracks.contains(track)) {
             playedTracks.clear()
@@ -509,11 +604,14 @@ fun MusicAppScreen(
         }
     }
 
-    LaunchedEffect(mediaPlayer) {
-        mediaPlayer?.setOnCompletionListener {
-            onNextTrack()
+    player?.addListener(object : Player.Listener {
+        override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED) {
+                // Когда трек закончился, переключаемся на следующий
+                onNextTrack()  // Здесь вызываем метод для переключения на следующий трек
+            }
         }
-    }
+    })
 
     val onMixToggle: () -> Unit = {
         isRandomMode = !isRandomMode
@@ -533,13 +631,42 @@ fun MusicAppScreen(
             isRepeatTrack = 0
     }
 
+// Обработчик кнопки воспроизведения/паузы
     val onPlayPauseClick: () -> Unit = {
         if (isPlaying) {
-            mediaPlayer?.pause()
+            player?.pause()
         } else {
-            mediaPlayer?.start()
+            player?.play()
         }
         isPlaying = !isPlaying
+    }
+
+    // Индикатор загрузки
+//    var loadingProgress by remember { mutableStateOf(0f) }
+//
+//// Устанавливаем слушатель для отслеживания прогресса загрузки
+//    player?.addListener(object : Player.Listener {
+//        override fun onPlaybackStateChanged(state: Int) {
+//            // Если трек проигрывается, проверяем прогресс загрузки
+//            if (state == Player.STATE_BUFFERING) {
+//                val bufferedPosition = player?.bufferedPosition ?: 0
+//                val duration = player?.duration ?: 0L
+//                loadingProgress = bufferedPosition.toFloat() / duration.toFloat()
+//                Log.d("ExoPlayer", "load - $loadingProgress")
+//            }
+//        }
+//    })
+
+    var bufferedPosition by remember { mutableStateOf(0f) }
+
+    LaunchedEffect(player) {
+        player?.let { exoPlayer ->
+            while (true) {
+                bufferedPosition = exoPlayer.bufferedPercentage / 100f
+                Log.d("loading", "loading - $bufferedPosition")
+                delay(1000) // Обновляем каждые 500 мс
+            }
+        }
     }
 
     Column(
@@ -638,6 +765,21 @@ fun MusicAppScreen(
                                 }
 
                                 2 -> {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 8.dp)
+                                    ) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                        Text(
+                                            text = "PLAYLISTS",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = Color(0xFFCACDD2),
+                                            fontSize = 26.sp,
+                                            textAlign = TextAlign.Center,
+                                        )
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
                                     PlaylistsScreen(
                                         playlists = viewModel.samplePlaylists,
                                         onAddPlaylist = {
@@ -707,13 +849,16 @@ fun MusicAppScreen(
                             isPlaying = isPlaying,
                             onPlayPauseClick = onPlayPauseClick,
                             currentTime = currentTime,
-                            trackDuration = mediaPlayer?.duration?.div(1000) ?: 0,
+                            trackDuration = if (player?.duration != C.TIME_UNSET) {
+                                (player?.duration ?: 0L) / 1000
+                            } else { 1000000L },
                             onSeekTo = onSeekTo,
                             onFavouriteToggle = onFavouriteToggle,
                             onMixToggle = onMixToggle,
                             isRandomMode = isRandomMode,
                             isRepeatTrack = isRepeatTrack,
-                            onRepeatTrackChange = onRepeatTrackChange
+                            onRepeatTrackChange = onRepeatTrackChange,
+                            bufferedPosition = bufferedPosition
                         )
                     }
 
@@ -903,14 +1048,15 @@ fun MiniPlayer(
     onPrevTrack: () -> Unit,
     isPlaying: Boolean,
     onPlayPauseClick: () -> Unit,
-    currentTime: Int,
-    trackDuration: Int,
+    currentTime: Long,
+    trackDuration: Long,
     onSeekTo: (Int) -> Unit,
     onFavouriteToggle: (Track) -> Unit,
     onMixToggle: () -> Unit,
     isRandomMode: Boolean,
     isRepeatTrack: Int,
-    onRepeatTrackChange: () -> Unit
+    onRepeatTrackChange: () -> Unit,
+    bufferedPosition: Float
 ) {
     if (isExpanded) {
         FullPlayerScreen(
@@ -927,7 +1073,8 @@ fun MiniPlayer(
             onMixToggle = onMixToggle,
             isRandomMode = isRandomMode,
             isRepeatTrack = isRepeatTrack,
-            onRepeatTrackChange = onRepeatTrackChange
+            onRepeatTrackChange = onRepeatTrackChange,
+            bufferedPosition = bufferedPosition
         )
     } else {
         val swipeThreshold = 40f
@@ -994,6 +1141,7 @@ fun MiniPlayer(
                 }
             }
         }
+
         LinearProgressIndicator(
             progress = { currentTime.toFloat() / trackDuration.toFloat() },
             modifier = Modifier
@@ -1001,6 +1149,14 @@ fun MiniPlayer(
                 .height(1.dp)
                 .background(Color(0xFF8589AC)),
         )
+//        // Индикатор прогресса загрузки
+//        LinearProgressIndicator(
+//            progress = { loadingProgress },
+//            modifier = Modifier
+//                .fillMaxWidth()
+//                .height(1.dp)
+//                .background(Color(0xFF00FF00)), // Цвет для прогресса загрузки (например, зеленый)
+//        )
     }
 }
 
@@ -1012,14 +1168,15 @@ fun FullPlayerScreen(
     onPrevTrack: () -> Unit,
     isPlaying: Boolean,
     onPlayPauseClick: () -> Unit,
-    currentPosition: Int,
-    trackDuration: Int,
+    currentPosition: Long,
+    trackDuration: Long,
     onSeekTo: (Int) -> Unit,
     onFavouriteToggle: (Track) -> Unit,
     onMixToggle: () -> Unit,
     isRandomMode: Boolean,
     isRepeatTrack: Int,
-    onRepeatTrackChange: () -> Unit
+    onRepeatTrackChange: () -> Unit,
+    bufferedPosition: Float
 ) {
     val swipeThreshold = 60f
     var hasSwiped = false
@@ -1152,19 +1309,52 @@ fun FullPlayerScreen(
         }
         Spacer(modifier = Modifier.height(16.dp))
 
-        Slider(
-            value = currentPosition.toFloat(),
-            onValueChange = { onSeekTo(it.toInt()) },
-            valueRange = 0f..trackDuration.toFloat(),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
-            colors = SliderDefaults.colors(
-                thumbColor = Color.White,
-                activeTrackColor = Color(0xFFA7D1DD),
-                inactiveTrackColor = Color(0xFF353D60)
+//        Slider(
+//            value = currentPosition.toFloat(),
+//            onValueChange = { onSeekTo(it.toInt()) },
+//            valueRange = 0f..maxOf(trackDuration.toFloat(), 1f),
+//            modifier = Modifier
+//                .fillMaxWidth()
+//                .padding(horizontal = 16.dp),
+//            colors = SliderDefaults.colors(
+//                thumbColor = Color.White,
+//                activeTrackColor = Color(0xFFA7D1DD),
+//                inactiveTrackColor = Color(0xFF353D60)
+//            )
+//        )
+        Box(modifier = Modifier
+            .fillMaxWidth()
+            .height(4.dp)
+            .padding(horizontal = 16.dp)
+        ) {
+            // Индикатор загрузки (буферизации)
+            LinearProgressIndicator(
+                progress = { bufferedPosition },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .padding(horizontal = 24.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.Gray), // Фон индикатора (фон можно убрать)
+                color = Color(0xFF737BA5) // Цвет буферизации
             )
-        )
+
+            // Основной ползунок для трека
+            Slider(
+                value = currentPosition.toFloat(),
+                onValueChange = { onSeekTo(it.toInt()) },
+                valueRange = 0f..maxOf(trackDuration.toFloat(), 1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.White,
+                    activeTrackColor = Color(0xFFA7D1DD),  // Прогресс проигрывания
+                    inactiveTrackColor = Color.Transparent // Делаем прозрачным, так как загрузка сверху
+                )
+            )
+        }
+
 
         Row(
             modifier = Modifier
@@ -1174,6 +1364,8 @@ fun FullPlayerScreen(
         ) {
             val formattedCurrentPosition = Utils.formatTime(currentPosition)
             val formattedTrackDuration = Utils.formatTime(trackDuration)
+            Log.d("loading", "time - $formattedTrackDuration")
+            Log.d("loading", "time 2 - $trackDuration")
             Text(
                 text = formattedCurrentPosition,
                 color = Color(0xFFC6CAEB),
@@ -1337,7 +1529,7 @@ fun TrackList(
             tracks.filter { track ->
                 val matchesSearch = track.title.contains(searchQuery, ignoreCase = true) ||
                         track.artist.contains(searchQuery, ignoreCase = true)
-                val notInPlaylist = !playlistTracks.contains(track)
+                val notInPlaylist = playlistTracks.none { it.id == track.id }
                 matchesSearch && (!isAdding || notInPlaylist)
 //                Log.d("equals", "playlistTracks: $playlistTracks")
 //                var inPlaylist: Boolean = false
@@ -1391,22 +1583,27 @@ fun TrackItem(
 ) {
 
     var isMenuExpanded by remember { mutableStateOf(false) }
-    val rotation = remember { Animatable(0f) }
+// Храним rotation отдельно, чтобы он не сбрасывался
+    val rotation = remember { Animatable(track.rotation?.value ?: 0f) }
 
     LaunchedEffect(isCurrent, isPlaying) {
         if (isCurrent) {
             if (isPlaying) {
-                rotation.animateTo(
-                    targetValue = rotation.value + 360f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(2000, easing = LinearEasing),
-                        repeatMode = RepeatMode.Restart
+                if (!rotation.isRunning) {  // Запускаем, только если не работает
+                    Log.d("rotationnn", "track rotation 1: ${rotation.value}")
+                    rotation.animateTo(
+                        targetValue = rotation.value + 360f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(2000, easing = LinearEasing),
+                            repeatMode = RepeatMode.Restart
+                        )
                     )
-                )
+                }
             } else {
-                rotation.stop()
+                rotation.stop()  // Останавливаем
             }
         } else {
+            track.rotation = Animatable(0f)
             rotation.animateTo(
                 targetValue = 0f,
                 animationSpec = tween(500)
@@ -1469,6 +1666,9 @@ fun TrackItem(
             }
             if(!isAdding){
                 IconButton(onClick = {
+                    track.rotation = rotation
+                    Log.d("rotationnn", "track rotation 2: ${track.rotation.value}")
+                    Log.d("rotationnn", "track rotation 3: ${rotation.value}")
                     onFavouriteToggle(track)
                 }) {
                     Icon(
@@ -2052,7 +2252,7 @@ fun AddTracksToPlaylistScreen(
         mutableStateListOf<Track>().apply {
             addAll(playlist.tracks.map { track ->
                 if (track.playlists == null) {
-                    track.copy(playlists = mutableListOf())
+                    track.copy(playlists = mutableListOf(), rotation = Animatable(0f))
                 } else {
                     track
                 }
@@ -2308,25 +2508,46 @@ fun GreetingPreview() {
         var playingTrackIndex by remember { mutableIntStateOf(0) }
         val context = LocalContext.current
 
-        LoginScreen(onLoginSuccess =
-        {
-//            MusicAppScreen(
-//                onTrackClickMain = { track ->
-//                    currentTrack = track
-//                },
-//                currentTrack = null,
-//                playingTrackIndex = playingTrackIndex,
-//                onPlayingTrackIndexChange = { newIndex ->
-//                    playingTrackIndex = newIndex
-//                },
-//                mediaPlayer = mediaPlayer,
-//                currentTrackList = mutableListOf(),
-//                onChangeCurTrackList = {},
-//                onLogoutSuccess = {},
-//                apiClient = ApiClient(context)
-//            )
-        },
-            apiClient = ApiClient(context)
+//        LoginScreen(onLoginSuccess =
+//        {
+////            MusicAppScreen(
+////                onTrackClickMain = { track ->
+////                    currentTrack = track
+////                },
+////                currentTrack = null,
+////                playingTrackIndex = playingTrackIndex,
+////                onPlayingTrackIndexChange = { newIndex ->
+////                    playingTrackIndex = newIndex
+////                },
+////                mediaPlayer = mediaPlayer,
+////                currentTrackList = mutableListOf(),
+////                onChangeCurTrackList = {},
+////                onLogoutSuccess = {},
+////                apiClient = ApiClient(context)
+////            )
+//        },
+//            apiClient = ApiClient(context)
+//        )
+        MusicAppScreen(
+            onTrackClickMain = { track ->
+//                playTrack(track, currentTrack)
+//                currentTrack = track
+//                playingTrackIndex = currentTrackList.indexOfFirst { it.track == track.track }
+            },
+            currentTrack = currentTrack,
+            playingTrackIndex = playingTrackIndex,
+//            mediaPlayer = mediaPlayer,
+            currentTrackList = mutableListOf(),
+            onChangeCurTrackList = { curList ->
+//                currentTrackList = curList
+//                Log.d("current playlist", "playlist: $currentTrackList")
+            },
+            onLogoutSuccess = {
+//                isLoggedIn = false
+//                token = null
+            },
+            apiClient = ApiClient(context),
+            context = context
         )
     }
 }
