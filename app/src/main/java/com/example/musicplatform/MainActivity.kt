@@ -1,9 +1,11 @@
 package com.example.musicplatform
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.media.MediaPlayer
@@ -51,18 +53,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,10 +84,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-import androidx.core.content.ContextCompat.startForegroundService
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.C
-import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -99,8 +99,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.io.File
-import java.io.IOException
+
 //import com.google.android.exoplayer2.C
 
 
@@ -116,7 +115,7 @@ class MainActivity : ComponentActivity() {
                 var playingTrackIndex by remember { mutableIntStateOf(0) }
                 var currentTrackList by remember { mutableStateOf<List<Track>>(emptyList())}
 
-                val context = LocalContext.current
+                val context = applicationContext
                 val apiClient = ApiClient(context)
                 var token = apiClient.getJwtToken(context)
                 var isLoggedIn by remember { mutableStateOf(token != null) }
@@ -295,6 +294,12 @@ class MusicServiceConnection(private val context: Context) {
     private val _trackDuration = MutableStateFlow(0L)
     val trackDuration: StateFlow<Long> get() = _trackDuration
 
+    private val _button = MutableStateFlow(0L)
+    val button: StateFlow<Long> get() = _button
+
+    private val _isPlaying = MutableStateFlow(false)
+    val isPlaying: StateFlow<Boolean> get() = _isPlaying
+
     private val serviceScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
 
     private val serviceConnection = object : ServiceConnection {
@@ -312,6 +317,18 @@ class MusicServiceConnection(private val context: Context) {
             serviceScope.launch {
                 musicService?.trackDuration?.collect { time ->
                     _trackDuration.value = time
+                }
+            }
+
+            serviceScope.launch {
+                musicService?.button?.collect { time ->
+                    _button.value = time
+                }
+            }
+
+            serviceScope.launch {
+                musicService?.isPlaying?.collect { time ->
+                    _isPlaying.value = time
                 }
             }
         }
@@ -346,14 +363,18 @@ class MusicServiceConnection(private val context: Context) {
         musicService?.playTrack(url)
     }
 
+    fun setTrack(track: Track) {
+        musicService?.setTrack(track)
+    }
+
     // Метод для паузы
     fun pausePlay() {
-//        musicService?.pausePlay()
+        musicService?.pausePlay()
     }
 
     // Метод для перемотки
-    fun seekTo(position: Long) {
-//        musicService?.seekTo(position)
+    fun seekTo(position: Int) {
+        musicService?.seekTo(position)
     }
 }
 
@@ -395,7 +416,7 @@ fun MusicAppScreen(
     onChangeCurTrackList: (List<Track>) -> Unit,
     onLogoutSuccess: () -> Unit,
     apiClient: ApiClient,
-    context: Context
+    context: Context,
 ) {
     val viewModel: MyViewModel = viewModel()
     LaunchedEffect(Unit) {
@@ -408,7 +429,7 @@ fun MusicAppScreen(
     var isRandomMode by remember { mutableStateOf(false) }
     var selectedItem by remember { mutableIntStateOf(0)}
     var isRepeatTrack by remember { mutableIntStateOf(0) }
-    var isPlaying by remember { mutableStateOf(true) }
+//    var isPlaying by remember { mutableStateOf(true) }
 //    var currentTime by remember { mutableLongStateOf(0) }
 
     var isPlayerExpanded by remember { mutableStateOf(false) }
@@ -433,10 +454,16 @@ fun MusicAppScreen(
         serviceConnection.bindService()
     }
 
+
+
     val currentTime = serviceConnection.currentTime.collectAsState(initial = 0L).value
     val musicViewModel: MusicViewModel = viewModel()
 
     val trackDuration = serviceConnection.trackDuration.collectAsState(initial = 0L).value
+
+    val buttonFromNot = serviceConnection.button.collectAsState(initial = 0L).value
+
+    val isPlaying = serviceConnection.isPlaying.collectAsState(initial = false).value
 
 /*    fun playTrack(track: Track, currentTrack: Track?, file: File) {
         if (currentTrack?.track == track.track) {
@@ -461,14 +488,15 @@ fun MusicAppScreen(
     val playTrackFromServer = { track: Track, fileName: String ->
         CoroutineScope(Dispatchers.Main).launch {
             try {
-                val url = "http://192.168.1.103:8080/tracks/download/$fileName"
+                val url = "http://192.168.254.172:8080/tracks/download/$fileName"
                 Log.d("ExoPlayer", "Запуск воспроизведения: $fileName")
 
-                val intent = Intent(context, MusicService::class.java).apply {
-                    action = MusicService.ACTION_PLAY
-                    putExtra(MusicService.EXTRA_TRACK_URL, url)
-                }
-                context.startService(intent)
+//                val intent = Intent(context, MusicService::class.java).apply {
+//                    action = MusicService.ACTION_PLAY
+//                    putExtra(MusicService.EXTRA_TRACK_URL, url)
+//                }
+//                context.startService(intent)
+                serviceConnection.playTrack(url)
 
             } catch (e: Exception) {
                 Log.e("NetworkError", "Ошибка загрузки потока: ${e.message}")
@@ -541,11 +569,12 @@ fun MusicAppScreen(
     val onSeekTo: (Int) -> Unit = { newPosition ->
 //        player?.seekTo(newPosition * 1000L) // Переводим позицию в миллисекунды
 //        currentTime = newPosition.toLong() // Обновляем состояние текущего времени
-        val seekIntent = Intent(context, MusicService::class.java).apply {
-            action = MusicService.ACTION_SEEK
-            putExtra(MusicService.EXTRA_SEEK_POSITION, newPosition) // Переводим секунды в миллисекунды
-        }
-        context.startService(seekIntent)
+//        val seekIntent = Intent(context, MusicService::class.java).apply {
+//            action = MusicService.ACTION_SEEK
+//            putExtra(MusicService.EXTRA_SEEK_POSITION, newPosition) // Переводим секунды в миллисекунды
+//        }
+//        context.startService(seekIntent)
+        serviceConnection.seekTo(newPosition)
     }
 
     val onTrackClick: (Track) -> Unit = { track ->
@@ -555,7 +584,8 @@ fun MusicAppScreen(
             else -> viewModel.samplePlaylists[currentPlaylist].tracks
         }
         onChangeCurTrackList(curTrackList)
-        isPlaying = true
+//        isPlaying = true
+        serviceConnection.setTrack(track)
         playTrackFromServer(track, track.fileName)
         onTrackClickMain(track)
         if (!playedTracks.contains(track)) {
@@ -656,12 +686,32 @@ fun MusicAppScreen(
             }
         }
 
-        isPlaying = true
-        musicViewModel.setCurrentTrack(currentTrackList[nextIndex])
+//        isPlaying = true
         onTrackClick(currentTrackList[nextIndex])
         Log.d("onNextTrack", "Переключен на индекс: $playingTrackIndex")
         Log.d("onNextTrack", "Переключен на трек: ${currentTrackList[nextIndex].title}")
     }
+
+//    DisposableEffect(Unit) {
+//        val receiver = object : BroadcastReceiver() {
+//            override fun onReceive(context: Context?, intent: Intent?) {
+//                if (intent?.action == "com.example.musicplatform.TRACK_ENDED") {
+//                    onNextTrack()
+//                }
+//            }
+//        }
+//        val filter = IntentFilter("com.example.musicplatform.TRACK_ENDED")
+//
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+//            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+//        } else {
+//            context.registerReceiver(receiver, filter)
+//        }
+//
+//        onDispose {
+//            context.unregisterReceiver(receiver)
+//        }
+//    }
 
     val onPrevTrack: () -> Unit = {
 //        Log.d("trackHistory", "Размер ${trackHistory.size}, prevINdex: ${trackHistory.last()}")
@@ -673,25 +723,24 @@ fun MusicAppScreen(
             val prevIndex = trackHistory.last()
             trackHistory.removeAt(trackHistory.size - 1)
 
-            isPlaying = true
+//            isPlaying = true
             onTrackClick(viewModel.sampleTracks[prevIndex])
             Log.d("onPrevTrack", "Переключен на трек: ${currentTrackList[prevIndex].title}")
         } else {
-            isPlaying = true
-            musicViewModel.setCurrentTrack(viewModel.sampleTracks[playingTrackIndex])
+//            isPlaying = true
             onTrackClick(viewModel.sampleTracks[playingTrackIndex])
             Log.d("onPrevTrack", "Переключен на трек: ${currentTrackList[playingTrackIndex].title}")
         }
     }
 
-//    player?.addListener(object : Player.Listener {
-//        override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
-//            if (playbackState == Player.STATE_ENDED) {
-//                // Когда трек закончился, переключаемся на следующий
-//                onNextTrack()  // Здесь вызываем метод для переключения на следующий трек
-//            }
-//        }
-//    })
+    serviceConnection.player?.addListener(object : Player.Listener {
+        override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED) {
+                // Когда трек закончился, переключаемся на следующий
+                onNextTrack()  // Здесь вызываем метод для переключения на следующий трек
+            }
+        }
+    })
 
     val onMixToggle: () -> Unit = {
         isRandomMode = !isRandomMode
@@ -713,38 +762,39 @@ fun MusicAppScreen(
 
 // Обработчик кнопки воспроизведения/паузы
     val onPlayPauseClick: () -> Unit = {
-        val intent = Intent(context, MusicService::class.java).apply {
-            action = MusicService.ACTION_PAUSE
-        }
-        context.startService(intent)
-        isPlaying = !isPlaying
+        serviceConnection.pausePlay()
+//        isPlaying = !isPlaying
     }
-
-    // Индикатор загрузки
-//    var loadingProgress by remember { mutableStateOf(0f) }
-//
-//// Устанавливаем слушатель для отслеживания прогресса загрузки
-//    player?.addListener(object : Player.Listener {
-//        override fun onPlaybackStateChanged(state: Int) {
-//            // Если трек проигрывается, проверяем прогресс загрузки
-//            if (state == Player.STATE_BUFFERING) {
-//                val bufferedPosition = player?.bufferedPosition ?: 0
-//                val duration = player?.duration ?: 0L
-//                loadingProgress = bufferedPosition.toFloat() / duration.toFloat()
-//                Log.d("ExoPlayer", "load - $loadingProgress")
-//            }
-//        }
-//    })
 
     var bufferedPosition by remember { mutableStateOf(0f) }
 
-//    LaunchedEffect(player) {
-//        player?.let { exoPlayer ->
-//            while (true) {
-//                bufferedPosition = exoPlayer.bufferedPercentage / 100f
-//                Log.d("loading", "loading - $bufferedPosition")
-//                delay(1000) // Обновляем каждые 500 мс
-//            }
+    LaunchedEffect(serviceConnection.player) {
+        serviceConnection.player?.let { exoPlayer ->
+            while (true) {
+                bufferedPosition = exoPlayer.bufferedPercentage / 100f
+                Log.d("loading", "loading - $bufferedPosition")
+                delay(1000) // Обновляем каждые 500 мс
+            }
+        }
+    }
+
+    val trackAction by musicViewModel.trackAction.observeAsState()
+
+    LaunchedEffect(buttonFromNot) {
+        Log.d("MusicAppScreen", "Получено действие: $buttonFromNot")
+        when (buttonFromNot) {
+            1L -> onNextTrack()
+            2L -> onPrevTrack()
+            3L -> currentTrack?.let { onFavouriteToggle(it) }
+        }
+    }
+
+//    DisposableEffect(Unit) {
+//        val filter = IntentFilter("com.example.musicplatform.TRACK_CONTROL")
+//        context.registerReceiver(trackControlReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+//
+//        onDispose {
+//            context.unregisterReceiver(trackControlReceiver)
 //        }
 //    }
 
