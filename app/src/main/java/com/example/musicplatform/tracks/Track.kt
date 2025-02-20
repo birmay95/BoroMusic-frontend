@@ -101,8 +101,8 @@ data class User(
     var password: String,
     @SerializedName("roles")
     var roles: String,
-    @SerializedName("isVerified")
-    var isVerified: Boolean,
+    @SerializedName("isArtistRequested")
+    var isArtistRequested: Boolean,
 )
 
 data class ArtistRequest(
@@ -113,7 +113,7 @@ data class ArtistRequest(
     @SerializedName("status")
     val status: String,
     @SerializedName("createdAt")
-    val createdAt: LocalDateTime,
+    val createdAt: String,
 )
 
 data class AuthResponse(

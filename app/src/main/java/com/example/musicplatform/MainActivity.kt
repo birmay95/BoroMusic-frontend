@@ -199,7 +199,7 @@ fun MusicAppScreen(
     val playTrackFromServer = { track: Track, fileName: String ->
         CoroutineScope(Dispatchers.Main).launch {
             try {
-                val url = "http://192.168.1.102:8080/tracks/download/$fileName"
+                val url = "http://192.168.254.172:8080/tracks/download/$fileName"
                 Log.d("ExoPlayer", "Запуск воспроизведения: $fileName")
                 serviceConnection.playTrack(url)
             } catch (e: Exception) {

@@ -104,8 +104,6 @@ fun uploadTrack(context: Context, uri: Uri, apiClient: ApiClient, viewModel: MyV
     }
 }
 
-
-
 @Composable
 fun SettingsScreen(
     onLogoutSuccess: () -> Unit,
@@ -128,7 +126,7 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color(0xFF0A0E1A))
-                    .padding(16.dp),
+                    .padding(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Box(
@@ -158,7 +156,6 @@ fun SettingsScreen(
                         )
 
                         Spacer(modifier = Modifier.weight(1f))
-                        Spacer(modifier = Modifier.width(36.dp))
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
@@ -227,7 +224,7 @@ fun SettingsScreen(
 //        }
                 Button(
                     onClick = {
-                        if (!(user.roles == "ARTIST" || user.roles == "ADMIN") || !user.isVerified) {
+                        if (!(user.roles == "ARTIST" || user.roles == "ADMIN")) {
                             isFailedUploadScreen = true
                         } else {
                             launcher.launch("audio/*")
@@ -268,44 +265,46 @@ fun SettingsScreen(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(16.dp))
-                Button(
-                    onClick = {
-                        isAdminPanelScreen = true
-                    },
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .drawBehind {
-                            val strokeWidth = 1.dp.toPx()
-                            val y = size.height - strokeWidth / 2
-                            drawLine(
-                                color = Color.Gray,
-                                start = Offset(0f, y),
-                                end = Offset(size.width, y),
-                                strokeWidth = strokeWidth
+                if(user.roles == "ADMIN") {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            isAdminPanelScreen = true
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .drawBehind {
+                                val strokeWidth = 1.dp.toPx()
+                                val y = size.height - strokeWidth / 2
+                                drawLine(
+                                    color = Color.Gray,
+                                    start = Offset(0f, y),
+                                    end = Offset(size.width, y),
+                                    strokeWidth = strokeWidth
+                                )
+                            }
+                            .animateContentSize(),
+                        contentPadding = PaddingValues(horizontal = 8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.Transparent,
+                            contentColor = Color.White,
+                            disabledContentColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent
+                        )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Text(
+                                text = "Check requests",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontSize = 16.sp,
+                                color = Color.White
                             )
                         }
-                        .animateContentSize(),
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Transparent,
-                        contentColor = Color.White,
-                        disabledContentColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent
-                    )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Text(
-                            text = "Check requests",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 16.sp,
-                            color = Color.White
-                        )
                     }
                 }
             }
@@ -323,73 +322,101 @@ fun SettingsScreen(
 
 @Composable
 fun FailedUploadScreen(onCollapse: () -> Unit, user: User, apiClient: ApiClient) {
+    var isRequestSent by remember { mutableStateOf(apiClient.getArtistRequest()) }
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(Color(0xFF0A0E1A))
             .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        var isArtistRequestScreen by remember { mutableStateOf(false) }
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xFF0A0E1A))
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
         ) {
-            if(!isArtistRequestScreen){
-                Text(
-                    "Загрузка треков доступна только для верифицированных артистов!",
-                    color = Color.Red
-                )
-                Button(onClick = { onCollapse() }) {
-                    Text("Назад")
-                }
-                Button(
-                    onClick = {
-                        isArtistRequestScreen = true
-                    },
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .drawBehind {
-                            val strokeWidth = 1.dp.toPx()
-                            val y = size.height - strokeWidth / 2
-                            drawLine(
-                                color = Color.Gray,
-                                start = Offset(0f, y),
-                                end = Offset(size.width, y),
-                                strokeWidth = strokeWidth
-                            )
-                        }
-                        .animateContentSize(),
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.Transparent,
-                        contentColor = Color.White,
-                        disabledContentColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onCollapse, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_roll_up),
+                        contentDescription = "Roll up",
+                        tint = Color(0xFF515A82)
                     )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        Text(
-                            text = "Submit a request",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontSize = 16.sp,
-                            color = Color.White
+                }
+                Spacer(modifier = Modifier.weight(1f))
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "Загрузка треков доступна только для верифицированных артистов!",
+            color = Color.Red
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        if (!isRequestSent) {
+            Button(
+                onClick = {
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            val response = user.id?.let {
+                                apiClient.artistApiService.requestArtist(
+                                    it
+                                )
+                            }
+                            if (response != null) {
+                                if (response.isSuccessful) {
+                                    isRequestSent = true
+                                    apiClient.saveArtistRequest(true)
+                                } else {
+                                    Log.e(
+                                        "ArtistRequest",
+                                        "Ошибка: ${response.errorBody()?.string()}"
+                                    )
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e("ArtistRequest", "Ошибка: ${e.message}")
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .drawBehind {
+                        val strokeWidth = 1.dp.toPx()
+                        val y = size.height - strokeWidth / 2
+                        drawLine(
+                            color = Color.Gray,
+                            start = Offset(0f, y),
+                            end = Offset(size.width, y),
+                            strokeWidth = strokeWidth
                         )
                     }
-                }
-            } else {
-                user.id?.let {
-                    ArtistRequestScreen(userId = it, apiClient = apiClient, onCollapse = { isArtistRequestScreen = false })
+                    .animateContentSize(),
+                contentPadding = PaddingValues(horizontal = 8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = Color.White,
+                    disabledContentColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Text(
+                        text = "Submit a request",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontSize = 16.sp,
+                        color = Color.White
+                    )
                 }
             }
+        } else {
+            Text("Заявка отправлена! Ожидайте подтверждения.", color = Color.Green)
         }
     }
 }

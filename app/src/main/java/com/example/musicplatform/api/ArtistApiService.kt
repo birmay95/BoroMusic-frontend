@@ -2,6 +2,7 @@ package com.example.musicplatform.api
 
 import com.example.musicplatform.tracks.ArtistRequest
 import okhttp3.ResponseBody
+import retrofit2.Call
 import retrofit2.Response
 import retrofit2.http.GET
 import retrofit2.http.POST

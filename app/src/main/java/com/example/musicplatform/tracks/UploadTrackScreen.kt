@@ -33,7 +33,7 @@ fun UploadTrackScreen(user: User, navController: NavController, apiClient: ApiCl
     var isUploading by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf("") }
 
-    if (user.roles != "ARTIST" || !user.isVerified) {
+    if (user.roles != "ARTIST") {
         Column(
             modifier = Modifier.fillMaxSize().padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,

@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.example.musicplatform.tracks.ArtistRequest
 import com.example.musicplatform.tracks.AuthResponse
 import com.example.musicplatform.tracks.User
 import com.google.gson.Gson
@@ -22,7 +23,7 @@ import java.io.IOException
 
 class ApiClient(private val context: Context) {
 
-    private val BASE_URL = "http://192.168.1.102:8080"
+    private val BASE_URL = "http://192.168.254.172:8080"
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -230,7 +231,20 @@ class ApiClient(private val context: Context) {
         })
     }
 
+    fun saveArtistRequest(status: Boolean) {
+        val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        sharedPreferences.edit().putBoolean("user_artist_request", status).apply()
+    }
 
+    fun clearArtistRequest() {
+        val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        sharedPreferences.edit().remove("user_artist_request").apply()
+    }
+
+    fun getArtistRequest(): Boolean {
+        val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        return sharedPreferences.getBoolean("user_artist_request", false)
+    }
 
     // Сохранение токена в SharedPreferences
     private fun saveToken(token: String, context: Context) {
@@ -247,7 +261,7 @@ class ApiClient(private val context: Context) {
                 .putString("user_username", user.email)
                 .putString("user_password", user.email)
                 .putString("user_role", user.roles)
-                .putBoolean("user_verification", user.isVerified)
+                .putBoolean("user_artist_request", user.isArtistRequested)
                 .apply()
         }
     }
@@ -265,7 +279,7 @@ class ApiClient(private val context: Context) {
         user.username = sharedPreferences.getString("user_username", "").toString()
         user.password = sharedPreferences.getString("user_password", "").toString()
         user.roles = sharedPreferences.getString("user_role", "").toString()
-        user.isVerified = sharedPreferences.getBoolean("user_verification", false)
+        user.isArtistRequested = sharedPreferences.getBoolean("user_artist_request", false)
         return user
     }
 
@@ -282,6 +296,6 @@ class ApiClient(private val context: Context) {
         sharedPreferences.edit().remove("user_username").apply()
         sharedPreferences.edit().remove("user_password").apply()
         sharedPreferences.edit().remove("user_role").apply()
-        sharedPreferences.edit().remove("user_verification").apply()
+        sharedPreferences.edit().remove("user_artist_request").apply()
     }
 }
