@@ -20,7 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.example.musicplatform.tracks.Playlist
+import com.example.musicplatform.model.Playlist
 import com.example.musicplatform.R
 
 @Composable
@@ -28,14 +28,14 @@ fun PlaylistCard(
     playlist: Playlist,
     onClick: () -> Unit,
     isAdding: Boolean,
-    onRemovePlaylist: (Playlist) -> Unit
+    onRemovePlaylist: (Playlist) -> Unit,
+    isUserPlaylist: Boolean
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
-            .clickable(onClick = onClick)
-        ,
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
             containerColor = Color(0xFF5D84A5)
         )
@@ -65,7 +65,7 @@ fun PlaylistCard(
                     color = Color(0xFF282B32)
                 )
             }
-            if(!isAdding){
+            if (!isAdding && isUserPlaylist) {
                 Spacer(modifier = Modifier.weight(1f))
                 IconButton(onClick = { onRemovePlaylist(playlist) }) {
                     Icon(

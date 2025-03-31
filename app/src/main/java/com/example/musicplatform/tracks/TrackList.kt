@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.example.musicplatform.model.Track
 
 @Composable
 fun TrackList(
@@ -20,11 +21,13 @@ fun TrackList(
     currentTrack: Track?,
     isPlaying: Boolean,
     isAdding: Boolean,
+    isUserPlaylist: Boolean,
     isPlaylist: Boolean,
     onAddToPlaylist: (Track) -> Unit,
     onRemoveFromPlaylist: (Track) -> Unit,
     playlistTracks: List<Track> = emptyList(),
-    onShowInfo: (Track) -> Unit
+    onShowInfo: (Track) -> Unit,
+    onShowRecs: (Track) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
 
@@ -57,9 +60,11 @@ fun TrackList(
                     isPlaying = isPlaying,
                     isAdding = isAdding,
                     isPlaylist = isPlaylist,
+                    isUserPlaylist = isUserPlaylist,
                     onAddToPlaylist = onAddToPlaylist,
                     onRemoveFromPlaylist = onRemoveFromPlaylist,
-                    onShowInfo = onShowInfo
+                    onShowInfo = onShowInfo,
+                    onShowRecs = onShowRecs
                 )
             }
         }

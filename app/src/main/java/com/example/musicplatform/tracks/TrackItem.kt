@@ -16,17 +16,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,7 +49,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.musicplatform.R
+import com.example.musicplatform.model.Track
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackItem(
     track: Track,
@@ -54,19 +61,21 @@ fun TrackItem(
     isPlaying: Boolean,
     isAdding: Boolean,
     isPlaylist: Boolean,
+    isUserPlaylist: Boolean,
     onAddToPlaylist: (Track) -> Unit,
     onRemoveFromPlaylist: (Track) -> Unit,
-    onShowInfo: (Track) -> Unit
+    onShowInfo: (Track) -> Unit,
+    onShowRecs: (Track) -> Unit
 ) {
 
-    var isMenuExpanded by remember { mutableStateOf(false) }
+    var isSheetOpen by remember { mutableStateOf(false) }
 
     val rotation = remember { Animatable(track.rotation?.value ?: 0f) }
 
     LaunchedEffect(isCurrent, isPlaying) {
         if (isCurrent) {
             if (isPlaying) {
-                if (!rotation.isRunning) {  // Запускаем, только если не работает
+                if (!rotation.isRunning) {
                     Log.d("rotationnn", "track rotation 1: ${rotation.value}")
                     rotation.animateTo(
                         targetValue = rotation.value + 360f,
@@ -77,7 +86,7 @@ fun TrackItem(
                     )
                 }
             } else {
-                rotation.stop()  // Останавливаем
+                rotation.stop()
             }
         } else {
             track.rotation = Animatable(0f)
@@ -108,7 +117,7 @@ fun TrackItem(
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = { onClick() },
-                        onLongPress = { isMenuExpanded = !isMenuExpanded }
+                        onLongPress = { isSheetOpen = true }
                     )
                 }
                 .background(Color(0xFF1D243D), shape = RoundedCornerShape(8.dp))
@@ -141,11 +150,9 @@ fun TrackItem(
                     fontSize = 12.sp
                 )
             }
-            if(!isAdding){
+            if (!isAdding) {
                 IconButton(onClick = {
                     track.rotation = rotation
-                    Log.d("rotationnn", "track rotation 2: ${track.rotation.value}")
-                    Log.d("rotationnn", "track rotation 3: ${rotation.value}")
                     onFavouriteToggle(track)
                 }) {
                     Icon(
@@ -156,7 +163,7 @@ fun TrackItem(
                     )
                 }
                 IconButton(
-                    onClick = { isMenuExpanded = !isMenuExpanded }
+                    onClick = { isSheetOpen = true }
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.ic_threedots),
@@ -184,96 +191,87 @@ fun TrackItem(
                 }
             }
         }
-        if(isMenuExpanded) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
-                    .background(
-                        Color(0xFF1D243D),
-                        shape = RoundedCornerShape(8.dp)
-                    )
+        if (isSheetOpen) {
+            val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+            ModalBottomSheet(
+                onDismissRequest = { isSheetOpen = false },
+                sheetState = sheetState,
+                containerColor = Color(0xFF1D243D)
             ) {
-                TextButton(
-                    onClick = {
-                        onFavouriteToggle(track)
-                        isMenuExpanded = false
-                    },
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(6.dp)
-                        .background(
-                            Color(0xFF353D60),
-                            shape = RoundedCornerShape(8.dp)
-                        )
+                        .padding(16.dp)
                 ) {
-                    Text(
-                        if(!track.favourite) "Add to favourites" else "Remove from favourite",
-                        color = Color(0xFFCACDD2),
-                        fontSize = 16.sp
-                    )
-                }
-                TextButton(
-                    onClick = {
-                        onAddToPlaylist(track)
-                        isMenuExpanded = false
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(6.dp)
-                        .background(
-                            Color(0xFF353D60),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                ) {
-                    Text(
-                        if(!isPlaylist) "Add to playlist" else "Add to another playlist",
-                        color = Color(0xFFCACDD2),
-                        fontSize = 16.sp
-                    )
-                }
-                if(isPlaylist) {
-                    TextButton(
-                        onClick = {
-                            onRemoveFromPlaylist(track)
-                            isMenuExpanded = false
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(6.dp)
-                            .background(
-                                Color(0xFF353D60),
-                                shape = RoundedCornerShape(8.dp)
-                            )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            "Remove from playlist",
-                            color = Color(0xFFCACDD2),
-                            fontSize = 16.sp
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_music_note),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(50.dp)
+                                .background(Color(0xFF353D60), shape = CircleShape)
+                                .padding(8.dp),
                         )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = track.title,
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = track.artist,
+                                color = Color(0xFF8589AC),
+                                fontSize = 14.sp
+                            )
+                        }
                     }
-                }
-                TextButton(
-                    onClick = {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(thickness = 1.dp, color = Color(0xFF353D60))
+                    Spacer(modifier = Modifier.height(12.dp))
+                    MenuItem(if (!track.favourite) "Add to favourites" else "Remove from favourite") {
+                        onFavouriteToggle(track)
+                        isSheetOpen = false
+                    }
+                    MenuItem(if (!isPlaylist) "Add to playlist" else "Add to another playlist") {
+                        onAddToPlaylist(track)
+                        isSheetOpen = false
+                    }
+                    if (isPlaylist && isUserPlaylist) {
+                        MenuItem("Remove from playlist") {
+                            onRemoveFromPlaylist(track)
+                            isSheetOpen = false
+                        }
+                    }
+                    MenuItem("More detailed") {
                         onShowInfo(track)
-                        isMenuExpanded = false
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(6.dp)
-                        .background(
-                            Color(0xFF353D60),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-                ) {
-                    Text(
-                        "Get info",
-                        color = Color(0xFFCACDD2),
-                        fontSize = 16.sp
-                    )
+                        isSheetOpen = false
+                    }
+                    MenuItem("Recommendations") {
+                        onShowRecs(track)
+                        isSheetOpen = false
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+fun MenuItem(text: String, onClick: () -> Unit) {
+    TextButton(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .background(Color(0xFF353D60), shape = RoundedCornerShape(8.dp))
+    ) {
+        Text(text, color = Color(0xFFCACDD2), fontSize = 16.sp)
     }
 }
 

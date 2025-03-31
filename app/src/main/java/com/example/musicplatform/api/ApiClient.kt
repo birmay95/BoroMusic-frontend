@@ -3,11 +3,12 @@ package com.example.musicplatform.api
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
-import com.example.musicplatform.tracks.ArtistRequest
-import com.example.musicplatform.tracks.AuthResponse
-import com.example.musicplatform.tracks.User
+import com.example.musicplatform.model.AuthResponse
+import com.example.musicplatform.model.User
 import com.google.gson.Gson
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -23,7 +24,7 @@ import java.io.IOException
 
 class ApiClient(private val context: Context) {
 
-    private val BASE_URL = "http://192.168.254.172:8080"
+    private val BASE_URL = "http://192.168.117.15:8080"
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -64,7 +65,10 @@ class ApiClient(private val context: Context) {
         retrofit.create(UserApiService::class.java)
     }
 
-    // Метод для авторизации пользователя
+    val recommendationApiService: RecommendationApiService by lazy {
+        retrofit.create(RecommendationApiService::class.java)
+    }
+
     fun login(
         username: String,
         password: String,
@@ -78,7 +82,10 @@ class ApiClient(private val context: Context) {
             put("password", password)
         }
 
-        val body = RequestBody.create("application/json; charset=utf-8".toMediaTypeOrNull(), json.toString())
+        val body = RequestBody.create(
+            "application/json; charset=utf-8".toMediaTypeOrNull(),
+            json.toString()
+        )
         val request = Request.Builder()
             .url(url)
             .post(body)
@@ -90,27 +97,28 @@ class ApiClient(private val context: Context) {
             }
 
             override fun onResponse(call: Call, response: Response) {
-                if (response.isSuccessful) {
-                    val responseData = response.body?.string()
-                    if (!responseData.isNullOrEmpty()) {
-                        try {
-                            val authResponse = Gson().fromJson(responseData, AuthResponse::class.java)
-                            saveToken(authResponse.token, context)
-                            saveUser(authResponse.user, context)
-                            onSuccess(authResponse.user)
-                        } catch (e: JSONException) {
-                            onError("Error: Failed to parse JSON response")
-                        }
-                    } else {
-                        onError("Error: Empty response from server")
+                val responseData = response.body?.string()
+
+                if (response.isSuccessful && !responseData.isNullOrEmpty()) {
+                    try {
+                        val authResponse = Gson().fromJson(responseData, AuthResponse::class.java)
+                        saveToken(authResponse.token, context)
+                        saveUser(authResponse.user, context)
+                        CoroutineScope(Dispatchers.Main).launch { onSuccess(authResponse.user) }
+                    } catch (e: JSONException) {
+                        onError("Error: Incorrect response from the server")
                     }
                 } else {
-                    val responseData = response.body?.string()
-                    if (!responseData.isNullOrEmpty()) {
-                        onError(responseData)
-                    } else {
-                        onError("Error: Unknown error occurred")
+                    val errorMessage = try {
+                        val jsonObject = JSONObject(responseData ?: "")
+                        jsonObject.optString(
+                            "message",
+                            "Error: ${response.code} ${response.message}"
+                        )
+                    } catch (e: Exception) {
+                        "Error: ${response.code} ${response.message}"
                     }
+                    CoroutineScope(Dispatchers.Main).launch { onError(errorMessage) }
                 }
             }
         })
@@ -131,7 +139,10 @@ class ApiClient(private val context: Context) {
             put("password", password)
         }
 
-        val body = RequestBody.create("application/json; charset=utf-8".toMediaTypeOrNull(), json.toString())
+        val body = RequestBody.create(
+            "application/json; charset=utf-8".toMediaTypeOrNull(),
+            json.toString()
+        )
         val request = Request.Builder()
             .url(url)
             .post(body)
@@ -147,21 +158,12 @@ class ApiClient(private val context: Context) {
                     val responseData = response.body?.string()
                     if (!responseData.isNullOrEmpty()) {
                         try {
-                            val jsonObject = JSONObject(responseData)
-
-                            val errorMessage = jsonObject.optString("error", null)
-                            if (errorMessage == "Пользователь уже существует") {
-                                Log.d("errorr", "exists")
-                                onError("User with this name already exists")
-                            } else {
-                                val authResponse = Gson().fromJson(responseData, AuthResponse::class.java)
-                                if (authResponse.token.isNotEmpty()) {
-                                    saveToken(authResponse.token, context)
-                                    saveUser(authResponse.user, context)
-                                    onSuccess(authResponse.user)
-                                } else {
-                                    onError("Error: Token not found in the response")
-                                }
+                            val authResponse =
+                                Gson().fromJson(responseData, AuthResponse::class.java)
+                            saveToken(authResponse.token, context)
+                            saveUser(authResponse.user, context)
+                            CoroutineScope(Dispatchers.Main).launch {
+                                onSuccess(authResponse.user)
                             }
                         } catch (e: JSONException) {
                             onError("Error: Failed to parse JSON response")
@@ -170,52 +172,153 @@ class ApiClient(private val context: Context) {
                         onError("Error: Empty response from server")
                     }
                 } else {
-//                    val responseData = response.body()?.string()
-//                    if (!responseData.isNullOrEmpty()) {
-//                        try {
-//                            val jsonObject = JSONObject(responseData)
-//                            val errorMessage = jsonObject.optString(null, null)
-//                            if (errorMessage != null) {
-//                                onError(errorMessage)  // Покажем текст ошибки от сервера
-//                            } else {
-//                                onError("Error: Unknown error occurred")
-//                            }
-//                        } catch (e: JSONException) {
-//                            onError("Error: Failed to parse error response")
-//                        }
-//                    } else {
-//                        onError("Error: Unknown error occurred")
-//                    }
                     val responseData = response.body?.string()
                     if (!responseData.isNullOrEmpty()) {
-                        onError(responseData)
+                        try {
+                            val jsonObject = JSONObject(responseData)
+                            val errorMessage =
+                                jsonObject.optString("message", "Unknown error occurred")
+                            onError(errorMessage)
+                        } catch (e: JSONException) {
+                            onError("Error: Failed to parse error response")
+                        }
                     } else {
                         onError("Error: Unknown error occurred")
                     }
                 }
             }
         })
+    }
 
+    fun requestEmailVerification(
+        userId: Long,
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val url = "$BASE_URL/auth/verification?userId=$userId"
+
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                onError("Error: Unable to connect to the server")
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val responseData = response.body?.string()
+
+                if (response.isSuccessful) {
+                    onSuccess(responseData ?: "Email verification request sent")
+                } else {
+                    val errorMessage = try {
+                        val jsonObject = JSONObject(responseData ?: "")
+                        jsonObject.optString(
+                            "message",
+                            "Error: ${response.code} ${response.message}"
+                        )
+                    } catch (e: Exception) {
+                        "Error: ${response.code} ${response.message}"
+                    }
+                    onError(errorMessage)
+                }
+            }
+        })
+    }
+
+    fun checkEmailVerification(
+        userId: Long,
+        onSuccess: (Boolean) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        val url = "$BASE_URL/auth/check-verification?userId=$userId"
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                onError("Error: Unable to connect to the server")
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val responseData = response.body?.string()
+
+                if (response.isSuccessful) {
+                    val isVerified = responseData?.toBoolean() ?: false
+                    onSuccess(isVerified)
+                } else {
+                    val errorMessage = try {
+                        val jsonObject = JSONObject(responseData ?: "")
+                        jsonObject.optString(
+                            "message",
+                            "Error: ${response.code} ${response.message}"
+                        )
+                    } catch (e: Exception) {
+                        "Error: ${response.code} ${response.message}"
+                    }
+                    onError(errorMessage)
+                }
+            }
+        })
+    }
+
+    fun verifyEmail(token: String, userId: Long, onSuccess: () -> Unit, onError: (String) -> Unit) {
+        val url = "$BASE_URL/auth/confirm?token=$token&userId=$userId"
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .build()
+
+        client.newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) {
+                onError("Error: Unable to connect to the server")
+            }
+
+            override fun onResponse(call: Call, response: Response) {
+                val responseData = response.body?.string()
+
+                if (response.isSuccessful) {
+                    onSuccess()
+                } else {
+                    val errorMessage = try {
+                        val jsonObject = JSONObject(responseData ?: "")
+                        jsonObject.optString(
+                            "message",
+                            "Error: ${response.code} ${response.message}"
+                        )
+                    } catch (e: Exception) {
+                        "Error: ${response.code} ${response.message}"
+                    }
+                    onError(errorMessage)
+                }
+            }
+        })
     }
 
     fun logout(
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
-        val url = "$BASE_URL/auth/logout" // Путь к методу logout на сервере
+        val url = "$BASE_URL/auth/logout"
         val request = Request.Builder()
             .url(url)
-            .post(RequestBody.create(null, "")) // POST-запрос с пустым телом
+            .post(RequestBody.create(null, ""))
             .build()
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 Handler(Looper.getMainLooper()).post {
-                    onError("Error: Unable to reach the server")
+                    onError("Error: Unable to connect to the server")
                 }
             }
 
             override fun onResponse(call: Call, response: Response) {
+                val responseData = response.body?.string()
+
                 if (response.isSuccessful) {
                     Handler(Looper.getMainLooper()).post {
                         clearToken(context)
@@ -223,31 +326,24 @@ class ApiClient(private val context: Context) {
                         onSuccess()
                     }
                 } else {
+                    val errorMessage = try {
+                        val jsonObject = JSONObject(responseData ?: "")
+                        jsonObject.optString(
+                            "message",
+                            "Error: ${response.code} ${response.message}"
+                        )
+                    } catch (e: Exception) {
+                        "Error: ${response.code} ${response.message}"
+                    }
                     Handler(Looper.getMainLooper()).post {
-                        onError("Logout failed")
+                        onError(errorMessage)
                     }
                 }
             }
         })
     }
 
-    fun saveArtistRequest(status: Boolean) {
-        val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        sharedPreferences.edit().putBoolean("user_artist_request", status).apply()
-    }
-
-    fun clearArtistRequest() {
-        val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        sharedPreferences.edit().remove("user_artist_request").apply()
-    }
-
-    fun getArtistRequest(): Boolean {
-        val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        return sharedPreferences.getBoolean("user_artist_request", false)
-    }
-
-    // Сохранение токена в SharedPreferences
-    private fun saveToken(token: String, context: Context) {
+    fun saveToken(token: String, context: Context) {
         val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         sharedPreferences.edit().putString("jwt_token", token).apply()
     }
@@ -261,32 +357,31 @@ class ApiClient(private val context: Context) {
                 .putString("user_username", user.email)
                 .putString("user_password", user.email)
                 .putString("user_role", user.roles)
-                .putBoolean("user_artist_request", user.isArtistRequested)
+                .putBoolean("user_email_verified", user.emailVerified)
                 .apply()
         }
     }
 
-    // Получение токена из SharedPreferences
     fun getJwtToken(context: Context): String? {
         val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         return sharedPreferences.getString("jwt_token", null)
     }
+
     fun getUser(context: Context): User {
         val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-        val user = User(null, "", "", "", "", false)
+        val user = User(null, "", "", "", "", false, null)
         user.id = sharedPreferences.getLong("user_id", 0)
         user.email = sharedPreferences.getString("user_email", "").toString()
         user.username = sharedPreferences.getString("user_username", "").toString()
         user.password = sharedPreferences.getString("user_password", "").toString()
         user.roles = sharedPreferences.getString("user_role", "").toString()
-        user.isArtistRequested = sharedPreferences.getBoolean("user_artist_request", false)
+        user.emailVerified = sharedPreferences.getBoolean("user_email_verified", false)
         return user
     }
 
     fun clearToken(context: Context) {
         val sharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         sharedPreferences.edit().remove("jwt_token").apply()
-        // После этого можно вызвать функцию, чтобы вернуться к экрану входа.
     }
 
     fun clearUser(context: Context) {

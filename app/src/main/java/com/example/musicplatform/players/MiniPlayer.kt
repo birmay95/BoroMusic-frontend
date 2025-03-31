@@ -11,13 +11,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
@@ -25,12 +32,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.musicplatform.R
-import com.example.musicplatform.tracks.Track
+import com.example.musicplatform.model.Track
+import kotlinx.coroutines.delay
 
 @Composable
 fun MiniPlayer(
     track: Track,
-    isExpanded: Boolean,
     onExpandClick: () -> Unit,
     onNextTrack: () -> Unit,
     onPrevTrack: () -> Unit,
@@ -38,56 +45,47 @@ fun MiniPlayer(
     onPlayPauseClick: () -> Unit,
     currentTime: Long,
     trackDuration: Long,
-    onSeekTo: (Int) -> Unit,
     onFavouriteToggle: (Track) -> Unit,
-    onMixToggle: () -> Unit,
-    isRandomMode: Boolean,
-    isRepeatTrack: Int,
-    onRepeatTrackChange: () -> Unit,
-    bufferedPosition: Float
+    modifier: Modifier
 ) {
-    if (isExpanded) {
-        FullPlayerScreen(
-            track = track,
-            onCollapse = onExpandClick,
-            onNextTrack = onNextTrack,
-            onPrevTrack = onPrevTrack,
-            isPlaying = isPlaying,
-            onPlayPauseClick = onPlayPauseClick,
-            currentPosition = currentTime,
-            trackDuration = trackDuration,
-            onSeekTo = onSeekTo,
-            onFavouriteToggle = onFavouriteToggle,
-            onMixToggle = onMixToggle,
-            isRandomMode = isRandomMode,
-            isRepeatTrack = isRepeatTrack,
-            onRepeatTrackChange = onRepeatTrackChange,
-            bufferedPosition = bufferedPosition
-        )
-    } else {
-        val swipeThreshold = 40f
-        var hasSwiped = false
+    val swipeThreshold = 100f
+    var hasSwiped by remember { mutableStateOf(false) }
+
+    LaunchedEffect(hasSwiped) {
+        if (hasSwiped) {
+            delay(300)
+            hasSwiped = false
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = 75.dp)
+            .padding(8.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF353D60))
+    ) {
+        Spacer(modifier = Modifier.height(4.dp))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFF1D243D))
                 .padding(8.dp)
-                .clickable { onExpandClick() }
+                .clickable(
+                    onClick = { onExpandClick() }
+                )
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
-                        onDragEnd = {
-                            hasSwiped = false
-                        },
+                        onDragStart = { hasSwiped = false },
+                        onDragEnd = { hasSwiped = false },
                         onHorizontalDrag = { _, dragAmount ->
                             if (!hasSwiped) {
                                 if (dragAmount > swipeThreshold) {
                                     onPrevTrack()
-                                    hasSwiped =
-                                        true
+                                    hasSwiped = true
                                 } else if (dragAmount < -swipeThreshold) {
                                     onNextTrack()
-                                    hasSwiped =
-                                        true
+                                    hasSwiped = true
                                 }
                             }
                         }
@@ -103,7 +101,12 @@ fun MiniPlayer(
             )
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = track.title, color = Color(0xFFC6CAEB), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = track.title,
+                    color = Color(0xFFC6CAEB),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
                 Text(text = track.artist, color = Color(0xFFC6CAEB), fontSize = 12.sp)
             }
             Row {
@@ -121,7 +124,7 @@ fun MiniPlayer(
                     onFavouriteToggle(track)
                 }) {
                     Icon(
-                        painter = painterResource(if (track.favourite) R.drawable.ic_favourite_true else R.drawable.ic_favorite), // Замените на ваш значок воспроизведения
+                        painter = painterResource(if (track.favourite) R.drawable.ic_favourite_true else R.drawable.ic_favorite),
                         contentDescription = if (track.favourite) "Like" else "Not like",
                         Modifier.size(30.dp),
                         tint = if (track.favourite) Color(0xFFA7D1DD) else Color(0xFF737BA5)
@@ -129,7 +132,7 @@ fun MiniPlayer(
                 }
             }
         }
-
+        Spacer(modifier = Modifier.height(4.dp))
         LinearProgressIndicator(
             progress = { currentTime.toFloat() / trackDuration.toFloat() },
             modifier = Modifier
@@ -139,3 +142,4 @@ fun MiniPlayer(
         )
     }
 }
+

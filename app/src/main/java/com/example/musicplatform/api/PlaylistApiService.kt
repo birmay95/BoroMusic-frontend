@@ -1,10 +1,11 @@
 package com.example.musicplatform.api
 
-import com.example.musicplatform.tracks.Playlist
+import com.example.musicplatform.model.Playlist
 import retrofit2.Call
 import retrofit2.http.*
 
 interface PlaylistApiService {
+
     @GET("playlists/{playlistId}")
     fun getPlaylist(
         @Path("playlistId") playlistId: Long
@@ -16,7 +17,8 @@ interface PlaylistApiService {
     @POST("playlists")
     fun createPlaylist(
         @Query("name") name: String,
-        @Query("description") description: String
+        @Query("description") description: String,
+        @Query("userId") userId: Long
     ): Call<Playlist>
 
     @POST("playlists/{playlistId}/tracks/{trackId}")

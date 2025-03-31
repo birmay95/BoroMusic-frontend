@@ -1,6 +1,5 @@
 package com.example.musicplatform.players
 
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -13,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -36,7 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.musicplatform.R
-import com.example.musicplatform.tracks.Track
+import com.example.musicplatform.model.Track
 import com.example.musicplatform.Utils
 
 @Composable
@@ -80,14 +80,7 @@ fun FullPlayerScreen(
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
-            IconButton(onClick = {}) {
-                Icon(
-                    painterResource(id = R.drawable.ic_share),
-                    contentDescription = "Share",
-                    Modifier.size(32.dp),
-                    tint = Color(0xFF515A82)
-                )
-            }
+            Spacer(modifier = Modifier.width(32.dp))
         }
         Spacer(modifier = Modifier.height(16.dp))
         Row(
@@ -96,34 +89,17 @@ fun FullPlayerScreen(
                 .padding(top = 90.dp)
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
-                        onDragStart = {
-                            Log.d("SwipeGesture", "Начало свайпа")
-                        },
                         onDragEnd = {
-                            Log.d("SwipeGesture", "Завершение свайпа")
                             hasSwiped = false
                             lastDragAmount = 0f
                         },
                         onHorizontalDrag = { change, dragAmount ->
                             lastDragAmount += dragAmount
-                            Log.d(
-                                "SwipeGesture",
-                                "dragAmount: $dragAmount, lastDragAmount: $lastDragAmount"
-                            )
-
                             if (!hasSwiped) {
                                 if (lastDragAmount > swipeThreshold) {
-                                    Log.d(
-                                        "SwipeGesture",
-                                        "Свайп вправо - переключаем на предыдущий трек"
-                                    )
                                     onPrevTrack()
                                     hasSwiped = true
                                 } else if (lastDragAmount < -swipeThreshold) {
-                                    Log.d(
-                                        "SwipeGesture",
-                                        "Свайп влево - переключаем на следующий трек"
-                                    )
                                     onNextTrack()
                                     hasSwiped = true
                                 }
@@ -131,8 +107,7 @@ fun FullPlayerScreen(
                             change.consume()
                         }
                     )
-                }
-            ,
+                },
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -172,13 +147,14 @@ fun FullPlayerScreen(
                         .padding(top = 8.dp)
                 )
             }
-            IconButton(onClick = {
-                onFavouriteToggle(track)
-            },
+            IconButton(
+                onClick = {
+                    onFavouriteToggle(track)
+                },
                 modifier = Modifier.padding(top = 36.dp, start = 8.dp)
             ) {
                 Icon(
-                    painter = painterResource(if (track.favourite) R.drawable.ic_favourite_true else R.drawable.ic_favorite), // Замените на ваш значок воспроизведения
+                    painter = painterResource(if (track.favourite) R.drawable.ic_favourite_true else R.drawable.ic_favorite),
                     contentDescription = if (track.favourite) "Like" else "Not like",
                     modifier = Modifier
                         .size(30.dp),
@@ -187,12 +163,12 @@ fun FullPlayerScreen(
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        Box(modifier = Modifier
-            .fillMaxWidth()
-            .height(4.dp)
-            .padding(horizontal = 16.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(4.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            // Индикатор загрузки (буферизации)
             LinearProgressIndicator(
                 progress = { bufferedPosition },
                 modifier = Modifier
@@ -200,11 +176,10 @@ fun FullPlayerScreen(
                     .height(4.dp)
                     .padding(horizontal = 24.dp)
                     .clip(RoundedCornerShape(50))
-                    .background(Color.Gray), // Фон индикатора (фон можно убрать)
-                color = Color(0xFF737BA5) // Цвет буферизации
+                    .background(Color.Gray),
+                color = Color(0xFF737BA5)
             )
 
-            // Основной ползунок для трека
             Slider(
                 value = currentPosition.toFloat(),
                 onValueChange = { onSeekTo(it.toInt()) },
@@ -214,12 +189,11 @@ fun FullPlayerScreen(
                     .padding(horizontal = 16.dp),
                 colors = SliderDefaults.colors(
                     thumbColor = Color.White,
-                    activeTrackColor = Color(0xFFA7D1DD),  // Прогресс проигрывания
-                    inactiveTrackColor = Color.Transparent // Делаем прозрачным, так как загрузка сверху
+                    activeTrackColor = Color(0xFFA7D1DD),
+                    inactiveTrackColor = Color.Transparent
                 )
             )
         }
-
 
         Row(
             modifier = Modifier
@@ -229,8 +203,6 @@ fun FullPlayerScreen(
         ) {
             val formattedCurrentPosition = Utils.formatTime(currentPosition)
             val formattedTrackDuration = Utils.formatTime(trackDuration)
-            Log.d("loading", "time - $formattedTrackDuration")
-            Log.d("loading", "time 2 - $trackDuration")
             Text(
                 text = formattedCurrentPosition,
                 color = Color(0xFFC6CAEB),
@@ -257,7 +229,7 @@ fun FullPlayerScreen(
                     onMixToggle()
                 },
                 modifier = Modifier.size(50.dp)
-            ){
+            ) {
                 Icon(
                     painterResource(id = R.drawable.ic_mix),
                     contentDescription = "Mix",
@@ -270,7 +242,7 @@ fun FullPlayerScreen(
             IconButton(
                 onClick = onPrevTrack,
                 modifier = Modifier.size(50.dp)
-            ){
+            ) {
                 Icon(
                     painterResource(id = R.drawable.ic_prev),
                     contentDescription = "Prev",
@@ -280,7 +252,7 @@ fun FullPlayerScreen(
             }
             Spacer(modifier = Modifier.size(16.dp))
 
-            IconButton (
+            IconButton(
                 onClick = {
                     onPlayPauseClick()
                 },
@@ -302,7 +274,7 @@ fun FullPlayerScreen(
             IconButton(
                 onClick = onNextTrack,
                 modifier = Modifier.size(50.dp)
-            ){
+            ) {
                 Icon(
                     painterResource(id = R.drawable.ic_next),
                     contentDescription = "Next",
@@ -314,10 +286,10 @@ fun FullPlayerScreen(
             IconButton(
                 onClick = onRepeatTrackChange,
                 modifier = Modifier.size(50.dp)
-            ){
+            ) {
                 Icon(
                     painter = painterResource(
-                        when(isRepeatTrack) {
+                        when (isRepeatTrack) {
                             0 -> R.drawable.ic_cycle
                             1 -> R.drawable.ic_cycle
                             2 -> R.drawable.ic_cycle_track
@@ -327,28 +299,26 @@ fun FullPlayerScreen(
                         }
                     ),
                     contentDescription =
-                    when(isRepeatTrack) {
+                    when (isRepeatTrack) {
                         0 -> "Not repeat"
                         1 -> "Repeat artist"
                         2 -> "Repeat track"
-                        else -> { "Not repeat" }
+                        else -> {
+                            "Not repeat"
+                        }
                     },
                     modifier = Modifier.size(40.dp),
                     tint =
-                    when(isRepeatTrack) {
+                    when (isRepeatTrack) {
                         0 -> Color(0xFF0A0E1A)
                         1 -> Color(0xFFA7D1DD)
                         2 -> Color(0xFFA7D1DD)
-                        else -> { Color(0xFF0A0E1A) }
+                        else -> {
+                            Color(0xFF0A0E1A)
+                        }
                     },
                 )
             }
         }
     }
 }
-
-//fun formatTime(seconds: Int): String {
-//    val minutes = seconds / 60
-//    val remainingSeconds = seconds % 60
-//    return String.format("%02d:%02d", minutes, remainingSeconds)
-//}

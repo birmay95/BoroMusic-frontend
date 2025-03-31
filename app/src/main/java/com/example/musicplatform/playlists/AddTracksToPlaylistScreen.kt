@@ -2,13 +2,17 @@ package com.example.musicplatform.playlists
 
 import android.util.Log
 import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -24,10 +28,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.musicplatform.api.ApiClient
-import com.example.musicplatform.MyViewModel
-import com.example.musicplatform.tracks.Playlist
+import com.example.musicplatform.main.MyViewModel
+import com.example.musicplatform.model.Playlist
 import com.example.musicplatform.R
-import com.example.musicplatform.tracks.Track
+import com.example.musicplatform.model.Track
 import com.example.musicplatform.tracks.TrackList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +47,8 @@ fun AddTracksToPlaylistScreen(
     onCollapse: () -> Unit,
     viewModel: MyViewModel,
     apiClient: ApiClient,
-    onShowInfo: (Track) -> Unit
+    onShowInfo: (Track) -> Unit,
+    userId: Long
 ) {
     val playlistTracks = remember {
         mutableStateListOf<Track>().apply {
@@ -59,7 +64,9 @@ fun AddTracksToPlaylistScreen(
 
 
     Column(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(8.dp)
     ) {
         Box(
             modifier = Modifier.fillMaxWidth(),
@@ -78,17 +85,31 @@ fun AddTracksToPlaylistScreen(
                 }
 
                 Spacer(modifier = Modifier.weight(1f))
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "Add tracks to",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFFCACDD2),
+                        fontSize = 24.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = playlist.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color(0xFFCACDD2),
+                        fontSize = 24.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.width(36.dp))
+
             }
-
-            Text(
-                text = "Add tracks",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color(0xFFCACDD2),
-                fontSize = 26.sp,
-                textAlign = TextAlign.Center
-            )
         }
-
+        Spacer(modifier = Modifier.height(16.dp))
         Log.d("Adding", "tracks in playlist: $playlistTracks")
         TrackList(
             tracks = allTracks,
@@ -98,54 +119,76 @@ fun AddTracksToPlaylistScreen(
             isPlaying = isPlaying,
             isAdding = true,
             isPlaylist = false,
+            isUserPlaylist = false,
             onAddToPlaylist = { track: Track ->
-                Log.d("AddTrackToPlaylist", "Attempting to add track with ID: ${track.id} to playlist with ID: ${playlist.id}")
-
-                // Запускаем корутину для добавления трека в плейлист на сервере
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        // Проверяем ID плейлиста и трека перед выполнением запроса
                         if (playlist.id == null || track.id == null) {
-                            Log.e("AddTrackToPlaylist", "Playlist ID or Track ID is null, cannot proceed with request")
+                            Log.e(
+                                "AddTracksToPlaylist",
+                                "Playlist ID or Track ID is null, cannot proceed with request"
+                            )
                             return@launch
                         }
 
-                        // Отправляем запрос на добавление трека в плейлист
-                        Log.d("AddTrackToPlaylist", "Sending request to add track to playlist...")
                         val response = apiClient.playlistApiService.addTrackToPlaylist(
                             playlist.id, track.id
                         ).execute()
 
-                        Log.d("AddTrackToPlaylist", "Received response for adding track to playlist")
-
                         if (response.isSuccessful) {
-                            // Если запрос успешен, обновляем локальный плейлист
                             response.body()?.let { updatedPlaylist ->
-                                Log.d("AddTrackToPlaylist", "Track successfully added to playlist on server")
-                                val index = viewModel.samplePlaylists.indexOfFirst { it.id == playlist.id }
+                                var index =
+                                    viewModel.sampleUserPlaylists.indexOfFirst { it.id == playlist.id }
                                 if (index != -1) {
-                                    viewModel.samplePlaylists[index] = updatedPlaylist
-                                    Log.d("AddTrackToPlaylist", "Updated local playlist by adding track")
+                                    viewModel.sampleUserPlaylists[index] =
+                                        viewModel.updateFavourite(
+                                            apiClient,
+                                            userId,
+                                            updatedPlaylist
+                                        )
                                 } else {
-                                    Log.e("AddTrackToPlaylist", "Failed to find playlist with ID ${playlist.id} in samplePlaylists")
+                                    Log.e(
+                                        "AddTracksToPlaylist",
+                                        "Failed to find playlist with ID ${playlist.id} in samplePlaylists"
+                                    )
                                 }
-                            } ?: Log.e("AddTrackToPlaylist", "Response body is null after successful addition")
+                                index =
+                                    viewModel.samplePlaylists.indexOfFirst { it.id == playlist.id }
+                                if (index != -1) {
+                                    viewModel.samplePlaylists[index] = viewModel.updateFavourite(
+                                        apiClient,
+                                        userId,
+                                        updatedPlaylist
+                                    )
+                                } else {
+                                    Log.e(
+                                        "AddTracksToPlaylist",
+                                        "Failed to find playlist with ID ${playlist.id} in samplePlaylists"
+                                    )
+                                }
+                            } ?: Log.e(
+                                "AddTracksToPlaylist",
+                                "Response body is null after successful addition"
+                            )
                         } else {
-                            // Обработка ошибки, если добавление трека не удалось
-                            Log.e("AddTrackToPlaylist", "Error adding track to playlist: ${response.errorBody()?.string()}")
+                            Log.e(
+                                "AddTracksToPlaylist",
+                                "Error adding track to playlist: ${response.errorBody()?.string()}"
+                            )
                         }
                     } catch (e: Exception) {
-                        Log.e("AddTrackToPlaylist", "Error occurred while adding track to playlist: ${e.message}")
+                        Log.e(
+                            "AddTracksToPlaylist",
+                            "Error occurred while adding track to playlist: ${e.message}"
+                        )
                     }
                 }
-
-                // Локальное добавление трека в плейлист для мгновенного обновления
                 playlistTracks.add(track)
             },
             onRemoveFromPlaylist = {},
             playlistTracks = playlistTracks,
-            onShowInfo = onShowInfo
+            onShowInfo = onShowInfo,
+            onShowRecs = {}
         )
-
     }
 }
