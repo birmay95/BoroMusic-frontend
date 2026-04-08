@@ -44,10 +44,11 @@ import com.example.musicplatform.api.ApiClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 @Composable
 fun EmailVerificationScreen(
-    userId: Long,
+    userId: UUID,
     apiClient: ApiClient,
     onVerificationSuccess: () -> Unit
 ) {

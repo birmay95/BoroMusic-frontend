@@ -43,12 +43,13 @@ import com.example.musicplatform.R
 import com.example.musicplatform.api.ApiClient
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.util.UUID
 
 @Composable
 fun ChangeEmailScreen(
     onBack: () -> Unit,
     apiClient: ApiClient,
-    userId: Long,
+    userId: UUID,
     onSuccess: () -> Unit
 ) {
     val context = LocalContext.current
@@ -187,7 +188,7 @@ fun ChangeEmailScreen(
     }
 }
 
-suspend fun changeEmail(userId: Long, newEmail: String, apiClient: ApiClient): Result<String> {
+suspend fun changeEmail(userId: UUID, newEmail: String, apiClient: ApiClient): Result<String> {
     return try {
         val response = apiClient.userApiService.changeEmail(
             userId,

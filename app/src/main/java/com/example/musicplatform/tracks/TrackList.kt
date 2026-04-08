@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,7 +28,8 @@ fun TrackList(
     onRemoveFromPlaylist: (Track) -> Unit,
     playlistTracks: List<Track> = emptyList(),
     onShowInfo: (Track) -> Unit,
-    onShowRecs: (Track) -> Unit
+    onShowRecs: (Track) -> Unit,
+    onLoadMore: () -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
 
@@ -51,7 +53,15 @@ fun TrackList(
             modifier = Modifier
                 .fillMaxSize()
         ) {
-            items(filteredTracks) { track ->
+            items(filteredTracks.size) { index ->
+                val track = filteredTracks[index]
+
+                if (index >= filteredTracks.size - 3 && searchQuery.isEmpty()) {
+                    LaunchedEffect(index) {
+                        onLoadMore()
+                    }
+                }
+
                 TrackItem(
                     track = track,
                     onClick = { onTrackClick(track) },

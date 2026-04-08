@@ -130,7 +130,7 @@ fun TrackDetailsScreen(
                 DetailItem(label = "File Size", value = fileSizeMb)
                 DetailItem(label = "Duration", value = durationFormatted)
                 if (track.genres.isNotEmpty()) {
-                    DetailItem(label = "Genres", value = track.genres.joinToString { it.name })
+                    DetailItem(label = "Genres", value = track.genres.joinToString { it })
                 }
             }
         }

@@ -55,6 +55,7 @@ import com.example.musicplatform.playlists.AddTrackToPlaylistsScreen
 import com.example.musicplatform.playlists.PlaylistsScreen
 import com.example.musicplatform.settings.SettingsScreen
 import com.example.musicplatform.model.Playlist
+import com.example.musicplatform.model.PlaylistRequestDto
 import com.example.musicplatform.model.Track
 import com.example.musicplatform.tracks.TrackDetailsScreen
 import com.example.musicplatform.model.User
@@ -63,6 +64,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 
 class MainActivity : ComponentActivity() {
@@ -79,7 +81,7 @@ class MainActivity : ComponentActivity() {
 
                 val context = applicationContext
                 val apiClient = ApiClient(context)
-                var token = apiClient.getJwtToken(context)
+                var token = apiClient.getAccessToken(context)
                 var isLoggedIn by remember { mutableStateOf(token != null) }
                 val startDestination = if (isLoggedIn) "musicApp" else "login"
                 var user: User = apiClient.getUser(context)
@@ -189,14 +191,19 @@ fun MusicAppScreen(
 ) {
     val viewModel: MyViewModel = viewModel()
     LaunchedEffect(Unit) {
+        Log.d("MusicAppDebug", "LaunchedEffect: Start. User object is: $user")
         if (user != null) {
+            Log.d("MusicAppDebug", "LaunchedEffect: User ID is: ${user.id}")
             user.id?.let {
+                Log.d("MusicAppDebug", "LaunchedEffect: Calling viewModel.loadSampleData()")
                 viewModel.loadSampleData(
                     apiClient = apiClient,
                     userId = it,
                     onLoadDataFailed = onLoadDataFailed
                 )
-            }
+            } ?: Log.e("MusicAppDebug", "LaunchedEffect: User ID is NULL! Loading aborted.")
+        } else {
+            Log.e("MusicAppDebug", "LaunchedEffect: User is NULL! Loading aborted.")
         }
     }
 
@@ -231,12 +238,25 @@ fun MusicAppScreen(
     val isPlaying = serviceConnection.isPlaying.collectAsState(initial = false).value
 
     val playTrackFromServer = { _: Track, fileName: String ->
-        CoroutineScope(Dispatchers.Main).launch {
+        CoroutineScope(Dispatchers.IO).launch {
             try {
-                val url = "http://192.168.117.15:8080/tracks/download/$fileName"
-                serviceConnection.playTrack(url)
+                val response = apiClient.trackApiService.getTemporaryUrl(fileName).execute()
+
+                if (response.isSuccessful) {
+                    val signedUrl = response.body()?.string()
+
+                    if (!signedUrl.isNullOrEmpty()) {
+                        withContext(Dispatchers.Main) {
+                            serviceConnection.playTrack(signedUrl)
+                        }
+                    } else {
+                        Log.e("PlayerError", "Received empty URL from server")
+                    }
+                } else {
+                    Log.e("PlayerError", "Failed to get signed URL: ${response.code()} ${response.message()}")
+                }
             } catch (e: Exception) {
-                Log.e("NetworkError", "Error loading the stream: ${e.message}")
+                Log.e("NetworkError", "Error fetching signed URL: ${e.message}")
             }
         }
     }
@@ -528,7 +548,12 @@ fun MusicAppScreen(
                                         onShowInfo = onShowInfo,
                                         changeTrackForAddToPlaylist = changeTrackForAddToPlaylist,
                                         text = "MUSIC",
-                                        onShowRecs = onShowRecs
+                                        onShowRecs = onShowRecs,
+                                        onLoadMore = {
+                                            if (user?.id != null) {
+                                                viewModel.loadNextTracksPage(apiClient, user.id!!)
+                                            }
+                                        }
                                     )
                                 }
 
@@ -605,7 +630,12 @@ fun MusicAppScreen(
                                             apiClient = apiClient,
                                             onShowInfo = onShowInfo,
                                             user = user,
-                                            onShowRecs = onShowRecs
+                                            onShowRecs = onShowRecs,
+                                            onLoadMore = {
+                                                user.id?.let { userId ->
+                                                    viewModel.loadNextPlaylistsPage(apiClient, userId)
+                                                }
+                                            }
                                         )
                                     }
                                 }
@@ -670,9 +700,7 @@ fun MusicAppScreen(
                                 user?.let { it1 ->
                                     it1.id?.let { it2 ->
                                         apiClient.playlistApiService.createPlaylist(
-                                            name,
-                                            description,
-                                            it2
+                                            PlaylistRequestDto(name, description, it2)
                                         )
                                             .execute()
                                     }

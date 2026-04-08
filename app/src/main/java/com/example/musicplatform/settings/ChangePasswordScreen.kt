@@ -45,12 +45,13 @@ import com.example.musicplatform.api.ApiClient
 import com.example.musicplatform.model.ChangePasswordRequest
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.util.UUID
 
 @Composable
 fun ChangePasswordScreen(
     onBack: () -> Unit,
     apiClient: ApiClient,
-    userId: Long
+    userId: UUID
 ) {
     val context = LocalContext.current
     var currentPassword by remember { mutableStateOf("") }
@@ -209,7 +210,7 @@ fun ChangePasswordScreen(
 }
 
 suspend fun changePassword(
-    userId: Long,
+    userId: UUID,
     currentPassword: String,
     newPassword: String,
     apiClient: ApiClient

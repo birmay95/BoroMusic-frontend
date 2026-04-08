@@ -15,6 +15,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,7 +55,8 @@ fun PlaylistsScreen(
     apiClient: ApiClient,
     onShowInfo: (Track) -> Unit,
     user: User,
-    onShowRecs: (Track) -> Unit
+    onShowRecs: (Track) -> Unit,
+    onLoadMore: () -> Unit = {}
 ) {
     val playlistNavController = rememberNavController()
     NavHost(navController = playlistNavController, startDestination = "playlists") {
@@ -97,7 +99,15 @@ fun PlaylistsScreen(
                             .padding(16.dp)
                     ) {
                         LazyColumn {
-                            items(filteredPlaylists) { playlist ->
+                            items(filteredPlaylists.size) { index ->
+                                val playlist = filteredPlaylists[index]
+
+                                if (index >= filteredPlaylists.size - 3 && searchQuery.isEmpty()) {
+                                    LaunchedEffect(index) {
+                                        onLoadMore()
+                                    }
+                                }
+
                                 val isUserPlaylist =
                                     viewModel.sampleUserPlaylists.any { it.id == playlist.id } || user.roles == "ADMIN"
                                 PlaylistCard(

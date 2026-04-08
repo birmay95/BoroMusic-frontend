@@ -34,7 +34,8 @@ fun HomeScreen(
     onShowInfo: (Track) -> Unit,
     changeTrackForAddToPlaylist: (Track) -> Unit,
     text: String,
-    onShowRecs: (Track) -> Unit
+    onShowRecs: (Track) -> Unit,
+    onLoadMore: () -> Unit = {}
 ) {
     Column {
         Row(
@@ -79,7 +80,8 @@ fun HomeScreen(
             },
             onRemoveFromPlaylist = {},
             onShowInfo = onShowInfo,
-            onShowRecs = onShowRecs
+            onShowRecs = onShowRecs,
+            onLoadMore = onLoadMore
         )
     }
 }

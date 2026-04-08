@@ -36,6 +36,7 @@ import com.example.musicplatform.tracks.TrackList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 @Composable
 fun AddTracksToPlaylistScreen(
@@ -48,7 +49,7 @@ fun AddTracksToPlaylistScreen(
     viewModel: MyViewModel,
     apiClient: ApiClient,
     onShowInfo: (Track) -> Unit,
-    userId: Long
+    userId: UUID
 ) {
     val playlistTracks = remember {
         mutableStateListOf<Track>().apply {

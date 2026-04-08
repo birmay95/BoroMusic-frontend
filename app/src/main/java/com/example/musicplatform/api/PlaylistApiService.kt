@@ -1,41 +1,40 @@
 package com.example.musicplatform.api
 
+import com.example.musicplatform.model.PageResponse
 import com.example.musicplatform.model.Playlist
+import com.example.musicplatform.model.PlaylistRequestDto
 import retrofit2.Call
 import retrofit2.http.*
+import java.util.UUID
 
 interface PlaylistApiService {
 
-    @GET("playlists/{playlistId}")
+    @GET("/api/v1/playlists/{playlistId}")
     fun getPlaylist(
-        @Path("playlistId") playlistId: Long
+        @Path("playlistId") playlistId: UUID
     ): Call<Playlist>
 
-    @GET("playlists")
-    fun getPlaylists(): Call<List<Playlist>>
+    @GET("/api/v1/playlists")
+    fun getPlaylists(@Query("page") page: Int): Call<PageResponse<Playlist>>
 
-    @POST("playlists")
-    fun createPlaylist(
-        @Query("name") name: String,
-        @Query("description") description: String,
-        @Query("userId") userId: Long
-    ): Call<Playlist>
+    @POST("/api/v1/playlists")
+    fun createPlaylist(@Body request: PlaylistRequestDto): Call<Playlist>
 
-    @POST("playlists/{playlistId}/tracks/{trackId}")
+    @POST("/api/v1/playlists/{playlistId}/tracks/{trackId}")
     fun addTrackToPlaylist(
-        @Path("playlistId") playlistId: Long,
-        @Path("trackId") trackId: Long
+        @Path("playlistId") playlistId: UUID,
+        @Path("trackId") trackId: UUID
     ): Call<Playlist>
 
-    @DELETE("playlists/{playlistId}/tracks/{trackId}")
+    @DELETE("/api/v1/playlists/{playlistId}/tracks/{trackId}")
     fun removeTrackFromPlaylist(
-        @Path("playlistId") playlistId: Long,
-        @Path("trackId") trackId: Long
+        @Path("playlistId") playlistId: UUID,
+        @Path("trackId") trackId: UUID
     ): Call<Playlist>
 
-    @DELETE("playlists/{playlistId}")
+    @DELETE("/api/v1/playlists/{playlistId}")
     fun deletePlaylist(
-        @Path("playlistId") playlistId: Long
+        @Path("playlistId") playlistId: UUID
     ): Call<Void>
 }
 

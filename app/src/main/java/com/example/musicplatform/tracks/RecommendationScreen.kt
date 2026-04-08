@@ -49,7 +49,7 @@ fun RecommendationScreen(
 ) {
 
     LaunchedEffect(Unit) {
-        viewModel.fetchRecommendations(apiClient, trackId = track.id.toString())
+        track.id?.let { viewModel.fetchRecommendations(apiClient, trackId = it) }
     }
 
     Column(

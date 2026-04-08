@@ -49,7 +49,7 @@ android {
     }
     externalNativeBuild {
         cmake {
-            path = file("CMakeLists.txt")  // Укажите путь к файлу CMakeLists.txt
+            path = file("CMakeLists.txt")
         }
     }
 }

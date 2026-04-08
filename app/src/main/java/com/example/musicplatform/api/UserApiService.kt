@@ -12,42 +12,43 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
+import java.util.UUID
 
 interface UserApiService {
 
-    @GET("/users/{userId}")
-    fun getUser(@Path("userId") userId: Long): Call<User>
+    @GET("/api/v1/users/{userId}")
+    fun getUser(@Path("userId") userId: UUID): Call<User>
 
-    @POST("users/{userId}/favourites/{trackId}")
+    @POST("/api/v1/users/{userId}/favourites/{trackId}")
     suspend fun addToFavourites(
-        @Path("userId") userId: Long,
-        @Path("trackId") trackId: Long
+        @Path("userId") userId: UUID,
+        @Path("trackId") trackId: UUID
     ): Response<ResponseBody>
 
-    @DELETE("users/{userId}/favourites/{trackId}")
+    @DELETE("/api/v1/users/{userId}/favourites/{trackId}")
     suspend fun removeFromFavourites(
-        @Path("userId") userId: Long,
-        @Path("trackId") trackId: Long
+        @Path("userId") userId: UUID,
+        @Path("trackId") trackId: UUID
     ): Response<ResponseBody>
 
-    @GET("users/{userId}/favourites")
-    suspend fun getFavourites(@Path("userId") userId: Long): Response<List<Track>>
+    @GET("/api/v1/tracks/users/{userId}/favourites")
+    suspend fun getFavourites(@Path("userId") userId: UUID): Response<List<Track>>
 
-    @GET("users/{userId}/playlists")
-    suspend fun getPlaylists(@Path("userId") userId: Long): Response<List<Playlist>>
+    @GET("/api/v1/playlists/users/{userId}/playlists")
+    suspend fun getPlaylists(@Path("userId") userId: UUID): Response<List<Playlist>>
 
-    @POST("users/{userId}/change-password")
+    @POST("/api/v1/users/{userId}/change-password")
     suspend fun changePassword(
-        @Path("userId") userId: Long,
+        @Path("userId") userId: UUID,
         @Body request: ChangePasswordRequest
     ): Response<ResponseBody>
 
-    @POST("users/{userId}/change-email")
+    @POST("/api/v1/users/{userId}/change-email")
     suspend fun changeEmail(
-        @Path("userId") userId: Long,
+        @Path("userId") userId: UUID,
         @Body newEmail: String
     ): Response<ResponseBody>
 
-    @DELETE("users/{userId}/delete")
-    suspend fun deleteAccount(@Path("userId") userId: Long): Response<ResponseBody>
+    @DELETE("/api/v1/users/{id}")
+    suspend fun deleteAccount(@Path("id") userId: UUID): Response<ResponseBody>
 }

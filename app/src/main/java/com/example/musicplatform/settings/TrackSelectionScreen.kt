@@ -43,16 +43,30 @@ import com.example.musicplatform.R
 import com.example.musicplatform.api.ApiClient
 import com.example.musicplatform.model.Playlist
 import com.example.musicplatform.model.Track
+import com.example.musicplatform.model.User
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @SuppressLint("MutableCollectionMutableState")
 @Composable
-fun TrackSelectionScreen(apiClient: ApiClient, onCollapse: () -> Unit, viewModel: MyViewModel) {
+fun TrackSelectionScreen(
+    apiClient: ApiClient,
+    onCollapse: () -> Unit,
+    viewModel: MyViewModel,
+    user: User
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    var trackList by remember { mutableStateOf(viewModel.sampleTracks.toMutableList()) }
+    var trackList by remember {
+        mutableStateOf(
+            if (user.roles.contains("ADMIN")) {
+                viewModel.sampleTracks.toMutableList()
+            } else {
+                viewModel.sampleTracks.filter { it.uploadedBy == user.id }.toMutableList()
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -95,60 +109,53 @@ fun TrackSelectionScreen(apiClient: ApiClient, onCollapse: () -> Unit, viewModel
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        LazyColumn {
-            items(trackList) { track ->
-                TrackItem(track) {
-                    coroutineScope.launch {
-                        track.id?.let { trackId ->
-                            try {
-                                val response = withContext(Dispatchers.IO) {
-                                    apiClient.trackApiService.deleteTrack(trackId).execute()
-                                }
-                                withContext(Dispatchers.Main) {
-                                    if (response.isSuccessful) {
-                                        val responseBody =
-                                            response.body()?.string() ?: "Unknown response"
-                                        Log.d(
-                                            "TrackSelectionScreen",
-                                            "Server response: $responseBody"
-                                        )
-
-                                        trackList =
-                                            trackList.filterNot { it.id == trackId }.toMutableList()
-                                        viewModel.sampleTracks.removeIf { it.id == track.id }
-                                        viewModel.favouriteTracks.removeIf { it.id == track.id }
-                                        viewModel.samplePlaylists.forEach { playlist: Playlist ->
-                                            playlist.tracks.removeIf { it.id == track.id }
-                                        }
-                                        viewModel.sampleUserPlaylists.forEach { playlist ->
-                                            playlist.tracks.removeIf { it.id == track.id }
-                                        }
-                                        Toast.makeText(context, "Track removed", Toast.LENGTH_SHORT)
-                                            .show()
-                                    } else {
-                                        val errorBody =
-                                            response.errorBody()?.string() ?: "Unknown error"
-                                        Log.e("TrackSelectionScreen", "Deletion error: $errorBody")
-                                        Toast.makeText(
-                                            context,
-                                            "Failed to remove track",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
+        if (trackList.isEmpty()) {
+            Text(
+                text = "You don't have permission to delete any tracks or your uploaded tracks list is empty.",
+                color = Color(0xFF8589AC),
+                fontSize = 16.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(16.dp)
+            )
+        } else {
+            LazyColumn {
+                items(trackList) { track ->
+                    TrackItem(track) {
+                        coroutineScope.launch {
+                            track.id?.let { trackId ->
+                                try {
+                                    val response = withContext(Dispatchers.IO) {
+                                        apiClient.trackApiService.deleteTrack(trackId).execute()
                                     }
-                                }
-                            } catch (e: Exception) {
-                                Log.e("TrackSelectionScreen", "Error when deleting: ${e.message}")
-                                withContext(Dispatchers.Main) {
-                                    Toast.makeText(
-                                        context,
-                                        "Error: ${e.message}",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    withContext(Dispatchers.Main) {
+                                        if (response.isSuccessful) {
+                                            trackList = trackList.filterNot { it.id == trackId }.toMutableList()
+                                            viewModel.sampleTracks.removeIf { it.id == track.id }
+                                            viewModel.favouriteTracks.removeIf { it.id == track.id }
+                                            viewModel.samplePlaylists.forEach { playlist: Playlist ->
+                                                playlist.tracks.removeIf { it.id == track.id }
+                                            }
+                                            viewModel.sampleUserPlaylists.forEach { playlist ->
+                                                playlist.tracks.removeIf { it.id == track.id }
+                                            }
+                                            Toast.makeText(context, "Track removed", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            if (response.code() == 403) {
+                                                Toast.makeText(context, "Access denied: You can only delete your own tracks.", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(context, "Failed to remove track", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("TrackSelectionScreen", "Error when deleting: ${e.message}")
+                                    withContext(Dispatchers.Main) {
+                                        Toast.makeText(context, "Network Error", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             }
                         }
                     }
-
                 }
             }
         }

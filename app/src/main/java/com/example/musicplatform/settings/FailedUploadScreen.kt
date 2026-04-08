@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.musicplatform.R
 import com.example.musicplatform.api.ApiClient
+import com.example.musicplatform.model.ArtistRequestCreateDto
 import com.example.musicplatform.model.User
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -143,7 +144,7 @@ fun FailedUploadScreen(onCollapse: () -> Unit, user: User, apiClient: ApiClient)
                         try {
                             val response = user.id?.let {
                                 apiClient.artistApiService.requestArtist(
-                                    it
+                                    ArtistRequestCreateDto(it)
                                 )
                             }
                             if (response != null) {

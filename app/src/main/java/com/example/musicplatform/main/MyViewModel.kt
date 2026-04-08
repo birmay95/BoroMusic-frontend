@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 class MyViewModel() : ViewModel() {
     var samplePlaylists = mutableStateListOf<Playlist>()
@@ -25,7 +26,15 @@ class MyViewModel() : ViewModel() {
 
     var recommendations = mutableStateListOf<Track>()
 
-    fun fetchRecommendations(apiClient: ApiClient, trackId: String) {
+    var currentPage = 0
+    var isLastPage = false
+    var isLoadingNextPage = false
+
+    var currentPlaylistPage = 0
+    var isLastPlaylistPage = false
+    var isLoadingNextPlaylistPage = false
+
+    fun fetchRecommendations(apiClient: ApiClient, trackId: UUID) {
         viewModelScope.launch {
             try {
                 val result = apiClient.recommendationApiService.getRecommendations(trackId)
@@ -42,7 +51,7 @@ class MyViewModel() : ViewModel() {
         }
     }
 
-    suspend fun updateFavourite(apiClient: ApiClient, userId: Long, playlist: Playlist): Playlist {
+    suspend fun updateFavourite(apiClient: ApiClient, userId: UUID, playlist: Playlist): Playlist {
         val favouriteResponse = apiClient.userApiService.getFavourites(userId)
 
         if (favouriteResponse.isSuccessful) {
@@ -57,40 +66,123 @@ class MyViewModel() : ViewModel() {
         return playlist
     }
 
-    fun loadSampleData(apiClient: ApiClient, userId: Long, onLoadDataFailed: () -> Unit) {
-        CoroutineScope(Dispatchers.IO).launch {
+    fun loadNextTracksPage(apiClient: ApiClient, userId: UUID) {
+        Log.d("PaginationDebug", "loadNextTracksPage called. currentPage=$currentPage, isLastPage=$isLastPage, isLoadingNextPage=$isLoadingNextPage")
+
+        if (isLastPage || isLoadingNextPage) {
+            Log.d("PaginationDebug", "Skipping load: either last page reached or already loading.")
+            return
+        }
+
+        isLoadingNextPage = true
+        viewModelScope.launch(Dispatchers.IO) {
             try {
-                val tracksResponse = apiClient.trackApiService.getTracks().execute()
-                val playlistsResponse = apiClient.playlistApiService.getPlaylists().execute()
+                Log.d("PaginationDebug", "Executing getTracks API call for page: $currentPage")
+                val response = apiClient.trackApiService.getTracks(currentPage).execute()
+                Log.d("PaginationDebug", "getTracks response code: ${response.code()}")
+
                 val favouriteResponse = apiClient.userApiService.getFavourites(userId)
-                val userPlaylistsResponse = apiClient.userApiService.getPlaylists(userId)
+                Log.d("PaginationDebug", "getFavourites response code: ${favouriteResponse.code()}")
 
-                if (tracksResponse.isSuccessful && playlistsResponse.isSuccessful && favouriteResponse.isSuccessful && userPlaylistsResponse.isSuccessful) {
-                    val serverTracks = tracksResponse.body() ?: emptyList()
-                    val playlistsFromServer = playlistsResponse.body() ?: emptyList()
-                    val favouriteFromUser = favouriteResponse.body() ?: emptyList()
-                    val userPlaylists = userPlaylistsResponse.body() ?: emptyList()
+                if (response.isSuccessful && favouriteResponse.isSuccessful) {
+                    val pageData = response.body()
+                    Log.d("PaginationDebug", "Page data received: isNull=${pageData == null}")
 
-                    val favouriteTracksSet = favouriteFromUser.map { it.id }.toSet()
+                    if (pageData != null) {
+                        Log.d("PaginationDebug", "Page elements count: ${pageData.content.size}, isLast=${pageData.last}")
 
-                    val tracksFromServer = serverTracks.map {
-                        mapServerTrackToTrack(
-                            it,
-                            favourite = it.id in favouriteTracksSet,
-                            track = 0
-                        )
+                        val favouriteFromUser = favouriteResponse.body() ?: emptyList()
+                        val favouriteTracksSet = favouriteFromUser.mapNotNull { it.id }.toSet()
+
+                        val tracksFromServer = pageData.content.map {
+                            mapServerTrackToTrack(
+                                serverTrack = it,
+                                favourite = it.id in favouriteTracksSet,
+                                track = 0
+                            )
+                        }
+
+                        withContext(Dispatchers.Main) {
+                            sampleTracks.addAll(tracksFromServer)
+                            currentPage++
+                            isLastPage = pageData.last
+                            Log.d("PaginationDebug", "Successfully added to sampleTracks. New size: ${sampleTracks.size}")
+                        }
+                    } else {
+                        Log.e("PaginationDebug", "Page data is NULL. Check Retrofit mapping for PageResponse!")
                     }
+                } else {
+                    Log.e("PaginationDebug", "API call failed. Tracks Error: ${response.errorBody()?.string()}")
+                }
+            } catch (e: Exception) {
+                Log.e("PaginationDebug", "Exception during loadNextTracksPage: ${e.message}", e)
+                e.printStackTrace()
+            } finally {
+                isLoadingNextPage = false
+            }
+        }
+    }
 
-                    withContext(Dispatchers.Main) {
-                        sampleTracks.clear()
-                        sampleTracks.addAll(tracksFromServer)
-                        samplePlaylists.clear()
-                        samplePlaylists.addAll(playlistsFromServer)
-                        samplePlaylists.forEach { playlist ->
-                            playlist.tracks.fastForEach { track ->
+    fun loadNextPlaylistsPage(apiClient: ApiClient, userId: UUID) {
+        if (isLastPlaylistPage || isLoadingNextPlaylistPage) return
+
+        isLoadingNextPlaylistPage = true
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val response = apiClient.playlistApiService.getPlaylists(currentPlaylistPage).execute()
+                val favouriteResponse = apiClient.userApiService.getFavourites(userId)
+
+                if (response.isSuccessful && favouriteResponse.isSuccessful) {
+                    val pageData = response.body()
+                    val favouriteFromUser = favouriteResponse.body() ?: emptyList()
+                    val favouriteTracksSet = favouriteFromUser.mapNotNull { it.id }.toSet()
+
+                    if (pageData != null) {
+                        val newPlaylists = pageData.content
+                        newPlaylists.forEach { playlist ->
+                            playlist.tracks.forEach { track ->
                                 track.favourite = track.id in favouriteTracksSet
                             }
                         }
+
+                        withContext(Dispatchers.Main) {
+                            samplePlaylists.addAll(newPlaylists)
+                            currentPlaylistPage++
+                            isLastPlaylistPage = pageData.last
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                isLoadingNextPlaylistPage = false
+            }
+        }
+    }
+
+    fun loadSampleData(apiClient: ApiClient, userId: UUID, onLoadDataFailed: () -> Unit) {
+        Log.d("PaginationDebug", "loadSampleData started for userId: $userId")
+        currentPage = 0
+        isLastPage = false
+        sampleTracks.clear()
+
+        currentPlaylistPage = 0
+        isLastPlaylistPage = false
+        samplePlaylists.clear()
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val favouriteResponse = apiClient.userApiService.getFavourites(userId)
+                val userPlaylistsResponse = apiClient.userApiService.getPlaylists(userId)
+
+                Log.d("PaginationDebug", "Initial data: Favourites Code=${favouriteResponse.code()}, UserPlaylists Code=${userPlaylistsResponse.code()}")
+
+                if (favouriteResponse.isSuccessful && userPlaylistsResponse.isSuccessful) {
+                    val favouriteFromUser = favouriteResponse.body() ?: emptyList()
+                    val userPlaylists = userPlaylistsResponse.body() ?: emptyList()
+                    val favouriteTracksSet = favouriteFromUser.mapNotNull { it.id }.toSet()
+
+                    withContext(Dispatchers.Main) {
                         favouriteTracks.clear()
                         favouriteTracks.addAll(favouriteFromUser)
                         favouriteTracks.forEach { track ->
@@ -102,21 +194,19 @@ class MyViewModel() : ViewModel() {
                         sampleUserPlaylists.forEach { playlist: Playlist ->
                             playlist.tracks.fastForEach { track ->
                                 track.favourite = track.id in favouriteTracksSet
-                                Log.d("Favourite", "${track.title} - ${track.favourite}")
                             }
                         }
+
+                        Log.d("PaginationDebug", "Initial data processed. Triggering loadNextTracksPage and loadNextPlaylistsPage")
+                        loadNextTracksPage(apiClient, userId)
+                        loadNextPlaylistsPage(apiClient, userId)
                     }
-                } else if (tracksResponse.code() == 403 && playlistsResponse.code() == 403 && favouriteResponse.code() == 403 && userPlaylistsResponse.code() == 403) {
-                    Log.e(
-                        "LoadData",
-                        "Failed to load data: ${tracksResponse.errorBody()?.string()}"
-                    )
-                    withContext(Dispatchers.Main) {
-                        onLoadDataFailed()
-                    }
+                } else if (favouriteResponse.code() == 403 || userPlaylistsResponse.code() == 403) {
+                    Log.e("PaginationDebug", "403 Forbidden. Invoking onLoadDataFailed")
+                    withContext(Dispatchers.Main) { onLoadDataFailed() }
                 }
             } catch (e: Exception) {
-                Log.e("LoadData", "Error occurred: ${e.message}")
+                Log.e("PaginationDebug", "Exception in loadSampleData: ${e.message}", e)
                 e.printStackTrace()
             }
         }

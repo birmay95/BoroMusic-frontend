@@ -92,7 +92,7 @@ fun uploadTrack(
     uri: Uri,
     apiClient: ApiClient,
     viewModel: MyViewModel,
-    userId: Long
+    userId: UUID
 ) {
     val contentResolver = context.contentResolver
     val fileName = getFileName(context, uri) ?: "unknown.mp3"
@@ -105,9 +105,7 @@ fun uploadTrack(
                 inputStream.readBytes().toRequestBody("audio/mpeg".toMediaTypeOrNull())
             val part = MultipartBody.Part.createFormData("file", fileName, requestBody)
 
-            val userIdPart = userId.toString().toRequestBody("text/plain".toMediaTypeOrNull())
-
-            val response = apiClient.trackApiService.uploadFile(userIdPart, part).execute()
+            val response = apiClient.trackApiService.uploadFile(part).execute()
 
             withContext(Dispatchers.Main) {
                 if (response.isSuccessful) {
@@ -197,6 +195,7 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         apiClient.logout(
+                            userId = user.id!!,
                             onSuccess = {
                                 onLogoutSuccess()
                             },
@@ -505,6 +504,7 @@ fun SettingsScreen(
                         clearUserData(context)
                         Toast.makeText(context, "User data removed", Toast.LENGTH_SHORT).show()
                         apiClient.logout(
+                            userId = user.id!!,
                             onSuccess = {
                                 onLogoutSuccess()
                             },
@@ -697,7 +697,8 @@ fun SettingsScreen(
             TrackSelectionScreen(
                 apiClient = apiClient,
                 onCollapse = { settingsNavController.popBackStack() },
-                viewModel = viewModel
+                viewModel = viewModel,
+                user = user
             )
         }
         composable("support_screen") {
@@ -853,13 +854,14 @@ fun StorageInfoItem(icon: ImageVector, title: String, size: String) {
 }
 
 suspend fun deleteAccount(
-    userId: Long,
+    userId: UUID,
     apiClient: ApiClient,
     context: Context,
     onLogoutSuccess: () -> Unit
 ): String {
     return try {
         apiClient.logout(
+            userId = userId,
             onSuccess = {
                 onLogoutSuccess()
             },
