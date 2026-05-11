@@ -109,8 +109,8 @@ data class User(
     var username: String,
     @SerializedName("password")
     var password: String,
-    @SerializedName("roles")
-    var roles: String,
+    @SerializedName("role")
+    var role: String,
     @SerializedName("emailVerified")
     var emailVerified: Boolean,
     @SerializedName("verificationToken")
@@ -166,4 +166,9 @@ data class PageResponse<T>(
     val totalElements: Long,
     val size: Int,
     val number: Int
+)
+
+data class ExcludedTracksRequest(
+    @SerializedName("excludedIds")
+    val excludedIds: List<UUID>
 )

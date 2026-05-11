@@ -23,12 +23,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import android.Manifest
+import android.os.Bundle
+import android.support.v4.media.MediaMetadataCompat
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.example.musicplatform.R
 import com.example.musicplatform.model.Track
+import androidx.media.app.NotificationCompat as MediaNotificationCompat
 
 
 class MusicService : Service() {
@@ -36,6 +41,8 @@ class MusicService : Service() {
     private val binder = MusicBinder()
     private lateinit var notificationManager: NotificationManager
     private lateinit var notificationChannelId: String
+
+    private lateinit var mediaSession: MediaSessionCompat
 
     private var _currentTime = MutableStateFlow(0L)
     val currentTime: StateFlow<Long> = _currentTime
@@ -53,12 +60,15 @@ class MusicService : Service() {
 
     private var updateJob: Job? = null
 
+    private var lastPlayedUrl: String? = null
+
     companion object {
         const val ACTION_PLAY = "com.example.musicplatform.ACTION_PLAY"
         const val ACTION_PAUSE = "com.example.musicplatform.ACTION_PAUSE"
         const val ACTION_NEXT = "com.example.musicplatform.ACTION_NEXT"
         const val ACTION_PREV = "com.example.musicplatform.ACTION_PREV"
         const val ACTION_FAVORITE = "com.example.musicplatform.ACTION_FAVORITE"
+        const val ACTION_STOP = "com.example.musicplatform.ACTION_STOP"
         const val EXTRA_TRACK_URL = "com.example.musicplatform.EXTRA_TRACK_URL"
     }
 
@@ -74,13 +84,18 @@ class MusicService : Service() {
             ACTION_NEXT -> nextTrack()
             ACTION_PREV -> prevTrack()
             ACTION_FAVORITE -> addToFavorites()
+            ACTION_STOP -> stopAndReset()
         }
-        updateNotification()
+        if (intent?.action != ACTION_STOP) {
+            updateNotification()
+        }
         return START_STICKY
     }
 
     @OptIn(UnstableApi::class)
     fun playTrack(url: String) {
+        lastPlayedUrl = url
+
         _button.value = 0L
 
         player?.stop()
@@ -147,6 +162,11 @@ class MusicService : Service() {
     }
 
     fun pausePlay() {
+        if (player == null && lastPlayedUrl != null) {
+            playTrack(lastPlayedUrl!!)
+            return
+        }
+
         player?.let {
             if (_isPlaying.value) it.pause() else it.play()
             _isPlaying.value = !_isPlaying.value
@@ -176,6 +196,28 @@ class MusicService : Service() {
 
         player = ExoPlayer.Builder(this).build()
 
+        mediaSession = MediaSessionCompat(this, "MusicService").apply {
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPlay() {
+                    if (!_isPlaying.value) pausePlay()
+                }
+
+                override fun onPause() {
+                    if (_isPlaying.value) pausePlay()
+                }
+
+                override fun onSkipToNext() {
+                    nextTrack()
+                }
+
+                override fun onSkipToPrevious() {
+                    prevTrack()
+                }
+            })
+
+            isActive = true
+        }
+
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationChannelId = "music_player_channel"
 
@@ -191,6 +233,7 @@ class MusicService : Service() {
             }
             notificationManager.createNotificationChannel(channel)
         }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
                 Log.d("Permissions", "There is no permission for notifications")
@@ -200,27 +243,57 @@ class MusicService : Service() {
     }
 
     private fun updateNotification() {
+        val track = currentTrack ?: run {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            return
+        }
+
         val playPauseAction = if (_isPlaying.value) createPauseAction() else createPlayAction()
         val nextAction = createNextAction()
         val prevAction = createPrevAction()
-        val favoriteAction = createFavoriteAction()
+        val stateBuilder = PlaybackStateCompat.Builder()
+            .setActions(
+                PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
+            )
+            .setState(
+                if (_isPlaying.value) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
+                _currentTime.value * 1000L,
+                1.0f
+            )
+        mediaSession.setPlaybackState(stateBuilder.build())
 
-        val progress = _currentTime.value
-        val duration =_trackDuration.value / 1000L
+        val metadata = MediaMetadataCompat.Builder()
+            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, track.title)
+            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, track.artist)
+            .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, _trackDuration.value)
+            .build()
+        mediaSession.setMetadata(metadata)
+
+        val stopIntent = Intent(this, MusicService::class.java).apply { action = ACTION_STOP }
+        val stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE)
 
         val notification = NotificationCompat.Builder(this, notificationChannelId)
-            .setContentTitle(currentTrack?.title)
-            .setContentText(currentTrack?.artist)
             .setSmallIcon(R.drawable.ic_music_note)
-            .setProgress(duration.toInt(), progress.toInt(), false)
             .addAction(prevAction)
             .addAction(playPauseAction)
             .addAction(nextAction)
-            .addAction(favoriteAction)
-            .setOngoing(_isPlaying.value)
+            .setStyle(MediaNotificationCompat.MediaStyle()
+                .setMediaSession(mediaSession.sessionToken)
+                .setShowActionsInCompactView(0, 1, 2)
+            )
+            .setDeleteIntent(stopPendingIntent)
+            .setOnlyAlertOnce(true)
             .build()
 
-        startForeground(1, notification)
+        if (_isPlaying.value) {
+            startForeground(1, notification)
+        } else {
+            stopForeground(STOP_FOREGROUND_DETACH)
+            notificationManager.notify(1, notification)
+        }
     }
 
     private fun createPlayAction(): NotificationCompat.Action {
@@ -257,10 +330,27 @@ class MusicService : Service() {
         return NotificationCompat.Action(R.drawable.ic_favorite, "Favorite", pendingIntent)
     }
 
+    fun stopAndReset() {
+        player?.stop()
+        player?.clearMediaItems()
+        player = null
+
+        _isPlaying.value = false
+        _currentTime.value = 0L
+        _trackDuration.value = 0L
+
+        updateJob?.cancel()
+        updateJob = null
+
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        notificationManager.cancel(1)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         player?.release()
         updateJob?.cancel()
+        mediaSession.release()
     }
 }
 

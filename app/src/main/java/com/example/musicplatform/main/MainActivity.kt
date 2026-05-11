@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -84,7 +85,7 @@ class MainActivity : ComponentActivity() {
                 var token = apiClient.getAccessToken(context)
                 var isLoggedIn by remember { mutableStateOf(token != null) }
                 val startDestination = if (isLoggedIn) "musicApp" else "login"
-                var user: User = apiClient.getUser(context)
+                var user by remember { mutableStateOf(apiClient.getUser(context)) }
 
                 val granted = ContextCompat.checkSelfPermission(
                     this,
@@ -122,6 +123,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onLogoutSuccess = {
                                 token = null
+                                currentTrack = null
+                                playingTrackIndex = 0
+                                currentTrackList = emptyList()
                                 navController.navigate("login") {
                                     popUpTo("musicApp") { inclusive = true }
                                 }
@@ -343,6 +347,7 @@ fun MusicAppScreen(
         onChangeCurTrackList(curTrackList)
         serviceConnection.setTrack(track)
         playTrackFromServer(track, track.fileName)
+        track.id?.let { viewModel.addTrackToHistory(it) }
         onTrackClickMain(track)
         if (!playedTracks.contains(track)) {
             playedTracks.clear()
@@ -453,13 +458,21 @@ fun MusicAppScreen(
         }
     }
 
-    serviceConnection.player?.addListener(object : Player.Listener {
-        override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
-            if (playbackState == Player.STATE_ENDED) {
-                onNextTrack()
+    DisposableEffect(serviceConnection.player) {
+        val listener = object : Player.Listener {
+            override fun onPlayerStateChanged(playWhenReady: Boolean, playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    onNextTrack()
+                }
             }
         }
-    })
+
+        serviceConnection.player?.addListener(listener)
+
+        onDispose {
+            serviceConnection.player?.removeListener(listener)
+        }
+    }
 
     val onMixToggle: () -> Unit = {
         isRandomMode = !isRandomMode
@@ -738,6 +751,7 @@ fun MusicAppScreen(
             if (user != null) {
                 SettingsScreen(
                     onLogoutSuccess = {
+                        serviceConnection.stopAndReset()
                         onLogoutSuccess()
                     },
                     apiClient = apiClient,

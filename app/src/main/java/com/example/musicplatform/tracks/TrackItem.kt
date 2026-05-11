@@ -8,6 +8,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -142,12 +143,16 @@ fun TrackItem(
                     text = track.title,
                     color = Color(0xFFCACDD2),
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier.basicMarquee()
                 )
                 Text(
                     text = track.artist,
                     color = Color(0xFF8589AC),
-                    fontSize = 12.sp
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    modifier = Modifier.basicMarquee()
                 )
             }
             if (!isAdding) {
@@ -217,17 +222,23 @@ fun TrackItem(
                                 .padding(8.dp),
                         )
                         Spacer(modifier = Modifier.width(12.dp))
-                        Column {
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text(
                                 text = track.title,
                                 color = Color.White,
                                 fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                modifier = Modifier.basicMarquee()
                             )
                             Text(
                                 text = track.artist,
                                 color = Color(0xFF8589AC),
-                                fontSize = 14.sp
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                modifier = Modifier.basicMarquee()
                             )
                         }
                     }

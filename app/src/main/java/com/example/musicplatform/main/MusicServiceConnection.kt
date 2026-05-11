@@ -104,4 +104,8 @@ class MusicServiceConnection(private val context: Context) {
     fun seekTo(position: Int) {
         musicService?.seekTo(position)
     }
+
+    fun stopAndReset() {
+        musicService?.stopAndReset()
+    }
 }

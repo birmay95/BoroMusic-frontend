@@ -1,15 +1,16 @@
 package com.example.musicplatform.playlists
 
+import PersonalFeedCard
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -59,6 +60,8 @@ fun PlaylistsScreen(
     onLoadMore: () -> Unit = {}
 ) {
     val playlistNavController = rememberNavController()
+    var personalPlaylist by remember { mutableStateOf<Playlist?>(null) }
+    var isLoadingPersonalFeed by remember { mutableStateOf(false) }
     NavHost(navController = playlistNavController, startDestination = "playlists") {
         composable("playlists") {
             var searchQuery by remember { mutableStateOf("") }
@@ -99,6 +102,24 @@ fun PlaylistsScreen(
                             .padding(16.dp)
                     ) {
                         LazyColumn {
+                            if (searchQuery.isEmpty()) {
+                                item {
+                                    PersonalFeedCard(
+                                        onClick = {
+                                            if (!isLoadingPersonalFeed) {
+                                                isLoadingPersonalFeed = true
+                                                viewModel.loadPersonalFeedAndNavigate(apiClient, user) { generatedPlaylist ->
+                                                    personalPlaylist = generatedPlaylist
+                                                    isLoadingPersonalFeed = false
+                                                    playlistNavController.navigate("playlist_detail_personal")
+                                                }
+                                            }
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                }
+                            }
+
                             items(filteredPlaylists.size) { index ->
                                 val playlist = filteredPlaylists[index]
 
@@ -109,7 +130,7 @@ fun PlaylistsScreen(
                                 }
 
                                 val isUserPlaylist =
-                                    viewModel.sampleUserPlaylists.any { it.id == playlist.id } || user.roles == "ADMIN"
+                                    viewModel.sampleUserPlaylists.any { it.id == playlist.id } || user.role == "ADMIN"
                                 PlaylistCard(
                                     playlist = playlist,
                                     onClick = {
@@ -158,8 +179,34 @@ fun PlaylistsScreen(
                 apiClient = apiClient,
                 onShowInfo = onShowInfo,
                 user = user,
-                onShowRecs = onShowRecs
+                onShowRecs = onShowRecs,
+                isPersonalFeed = false
             )
+        }
+
+        composable("playlist_detail_personal") {
+            personalPlaylist?.let { playlist ->
+                PlaylistDetailScreen(
+                    playlist = playlist,
+                    onTrackClick = onTrackClick,
+                    onFavouriteToggle = onFavouriteToggle,
+                    currentTrack = currentTrack,
+                    isPlaying = isPlaying,
+                    onCollapse = {
+                        playlistNavController.popBackStack()
+                    },
+                    allTracks = allTracks,
+                    onAddToPlaylist = onAddToPlaylist,
+                    viewModel = viewModel,
+                    apiClient = apiClient,
+                    onShowInfo = onShowInfo,
+                    user = user,
+                    onShowRecs = onShowRecs,
+                    isPersonalFeed = true
+                )
+            } ?: run {
+                playlistNavController.popBackStack()
+            }
         }
     }
 }

@@ -3,9 +3,7 @@ package com.example.musicplatform.api
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import com.example.musicplatform.model.AuthResponse
-import com.example.musicplatform.model.TokenRefreshRequest
 import com.example.musicplatform.model.User
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
@@ -16,7 +14,6 @@ import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONException
@@ -28,7 +25,7 @@ import java.util.UUID
 
 class ApiClient(private val context: Context) {
 
-    private val BASE_URL = "http://192.168.185.15:8080"
+    private val BASE_URL = "http://192.168.100.14:8080"
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -385,7 +382,7 @@ class ApiClient(private val context: Context) {
                 .putString("user_email", user.email)
                 .putString("user_username", user.username)
                 .putString("user_password", user.password)
-                .putString("user_role", user.roles)
+                .putString("user_role", user.role)
                 .putBoolean("user_email_verified", user.emailVerified)
                 .apply()
         }
@@ -401,7 +398,7 @@ class ApiClient(private val context: Context) {
         user.email = sharedPreferences.getString("user_email", "").toString()
         user.username = sharedPreferences.getString("user_username", "").toString()
         user.password = sharedPreferences.getString("user_password", "").toString()
-        user.roles = sharedPreferences.getString("user_role", "").toString()
+        user.role = sharedPreferences.getString("user_role", "").toString()
         user.emailVerified = sharedPreferences.getBoolean("user_email_verified", false)
         return user
     }

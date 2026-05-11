@@ -6,8 +6,10 @@ import androidx.compose.ui.util.fastForEach
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.musicplatform.api.ApiClient
+import com.example.musicplatform.model.ExcludedTracksRequest
 import com.example.musicplatform.model.Playlist
 import com.example.musicplatform.model.Track
+import com.example.musicplatform.model.User
 import com.example.musicplatform.model.mapServerTrackToTrack
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +28,9 @@ class MyViewModel() : ViewModel() {
 
     var recommendations = mutableStateListOf<Track>()
 
+    private val listeningHistory = mutableListOf<UUID>()
+    private val MAX_HISTORY_SIZE = 50
+
     var currentPage = 0
     var isLastPage = false
     var isLoadingNextPage = false
@@ -34,10 +39,21 @@ class MyViewModel() : ViewModel() {
     var isLastPlaylistPage = false
     var isLoadingNextPlaylistPage = false
 
+    fun addTrackToHistory(trackId: UUID) {
+        listeningHistory.remove(trackId)
+        listeningHistory.add(trackId)
+
+        if (listeningHistory.size > MAX_HISTORY_SIZE) {
+            listeningHistory.removeAt(0)
+        }
+        Log.d("HistoryDebug", "Track added to history. Current history size: ${listeningHistory.size}")
+    }
+
     fun fetchRecommendations(apiClient: ApiClient, trackId: UUID) {
         viewModelScope.launch {
             try {
-                val result = apiClient.recommendationApiService.getRecommendations(trackId)
+                val request = ExcludedTracksRequest(listeningHistory.toList())
+                val result = apiClient.recommendationApiService.getRecommendations(trackId, request)
 
                 val recommendedTracks = result.mapNotNull { recommendation ->
                     sampleTracks.find { it.id == recommendation.trackId }
@@ -140,7 +156,7 @@ class MyViewModel() : ViewModel() {
                     if (pageData != null) {
                         val newPlaylists = pageData.content
                         newPlaylists.forEach { playlist ->
-                            playlist.tracks.forEach { track ->
+                            playlist.tracks?.forEach { track ->
                                 track.favourite = track.id in favouriteTracksSet
                             }
                         }
@@ -192,7 +208,7 @@ class MyViewModel() : ViewModel() {
                         sampleUserPlaylists.clear()
                         sampleUserPlaylists.addAll(userPlaylists)
                         sampleUserPlaylists.forEach { playlist: Playlist ->
-                            playlist.tracks.fastForEach { track ->
+                            playlist.tracks?.fastForEach { track ->
                                 track.favourite = track.id in favouriteTracksSet
                             }
                         }
@@ -207,6 +223,38 @@ class MyViewModel() : ViewModel() {
                 }
             } catch (e: Exception) {
                 Log.e("PaginationDebug", "Exception in loadSampleData: ${e.message}", e)
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun loadPersonalFeedAndNavigate(apiClient: ApiClient, user: User, onSuccess: (Playlist) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val request = ExcludedTracksRequest(listeningHistory.toList())
+                val response = apiClient.recommendationApiService.getPersonalRecommendations(
+                    request
+                ).execute()
+
+                if (response.isSuccessful) {
+                    val recommendations = response.body() ?: emptyList()
+
+                    val personalTracks = recommendations.mapNotNull { rec ->
+                        sampleTracks.find { it.id == rec.trackId }
+                    }.toMutableList()
+
+                    val personalPlaylist = Playlist(
+                        id = UUID.randomUUID(),
+                        name = "Personal Feed",
+                        description = "Specially selected tracks based on your taste.",
+                        tracks = personalTracks,
+                    )
+
+                    withContext(Dispatchers.Main) {
+                        onSuccess(personalPlaylist)
+                    }
+                }
+            } catch (e: Exception) {
                 e.printStackTrace()
             }
         }

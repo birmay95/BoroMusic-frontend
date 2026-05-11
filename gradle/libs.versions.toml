@@ -10,6 +10,8 @@ espressoCore = "3.5.0"
 lifecycleRuntimeKtx = "2.8.6"
 activityCompose = "1.9.3"
 composeBom = "2024.04.01"
+media = "1.7.0"
+mp3agic = "0.9.1"
 navigationCompose = "2.8.3"
 exoplayer = "2.19.1"
 media3 = "1.0.0"
@@ -26,6 +28,7 @@ datastoreCoreAndroid = "1.1.2"
 accompanist-pager = { module = "com.google.accompanist:accompanist-pager", version.ref = "accompanistPager" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-foundation = { module = "androidx.compose.foundation:foundation", version.ref = "foundation" }
+androidx-media-v170 = { module = "androidx.media:media", version.ref = "media" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
@@ -41,6 +44,7 @@ androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 # Retrofit dependencies
+mp3agic = { module = "com.mpatric:mp3agic", version.ref = "mp3agic" }
 retrofit = "com.squareup.retrofit2:retrofit:2.9.0"
 gsonConverter = "com.squareup.retrofit2:converter-gson:2.9.0"
 exoplayer = { module = "com.google.android.exoplayer:exoplayer", version.ref = "exoplayer" }

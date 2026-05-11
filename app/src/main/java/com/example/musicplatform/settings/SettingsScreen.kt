@@ -1,5 +1,6 @@
 package com.example.musicplatform.settings
 
+import UploadTrackDialog
 import android.app.usage.StorageStatsManager
 import android.content.Context
 import android.net.Uri
@@ -71,6 +72,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.musicplatform.main.MyViewModel
 import com.example.musicplatform.R
 import com.example.musicplatform.authorization.EmailVerificationScreen
+import com.mpatric.mp3agic.ID3v24Tag
+import com.mpatric.mp3agic.Mp3File
 import kotlinx.coroutines.delay
 import org.json.JSONObject
 import java.io.File
@@ -90,19 +93,21 @@ fun getFileName(context: Context, uri: Uri): String? {
 fun uploadTrack(
     context: Context,
     uri: Uri,
+    title: String,
+    artist: String,
+    album: String,
     apiClient: ApiClient,
     viewModel: MyViewModel,
     userId: UUID
 ) {
-    val contentResolver = context.contentResolver
     val fileName = getFileName(context, uri) ?: "unknown.mp3"
 
     CoroutineScope(Dispatchers.IO).launch {
+        var taggedFile: File? = null
         try {
-            val inputStream = contentResolver.openInputStream(uri)
-                ?: throw IOException("Couldn't open the file")
-            val requestBody =
-                inputStream.readBytes().toRequestBody("audio/mpeg".toMediaTypeOrNull())
+            taggedFile = applyTagsToMp3(context, uri, title, artist, album)
+
+            val requestBody = taggedFile.readBytes().toRequestBody("audio/mpeg".toMediaTypeOrNull())
             val part = MultipartBody.Part.createFormData("file", fileName, requestBody)
 
             val response = apiClient.trackApiService.uploadFile(part).execute()
@@ -115,21 +120,45 @@ fun uploadTrack(
                     }
                 } else {
                     val errorMessage = response.errorBody()?.string() ?: "Unknown error"
-                    Log.e(
-                        "UploadTrack",
-                        "Download error: Code ${response.code()}, Response: $errorMessage"
-                    )
-                    Toast.makeText(context, "Upload failed: $errorMessage", Toast.LENGTH_SHORT)
-                        .show()
+                    Toast.makeText(context, "Upload failed: $errorMessage", Toast.LENGTH_SHORT).show()
                 }
             }
         } catch (e: Exception) {
-            Log.e("UploadTrack", "Error when uploading a track: ${e.message}", e)
+            Log.e("UploadTrack", "Error: ${e.message}", e)
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
             }
+        } finally {
+            taggedFile?.delete()
         }
     }
+}
+
+fun applyTagsToMp3(context: Context, uri: Uri, title: String, artist: String, album: String): File {
+    val cacheDir = context.cacheDir
+    val rawFile = File(cacheDir, "upload_raw.mp3")
+    val taggedFile = File(cacheDir, "upload_tagged.mp3")
+
+    context.contentResolver.openInputStream(uri)?.use { input ->
+        rawFile.outputStream().use { output ->
+            input.copyTo(output)
+        }
+    }
+
+    val mp3file = Mp3File(rawFile.absolutePath)
+    val id3v2Tag = if (mp3file.hasId3v2Tag()) mp3file.id3v2Tag else ID3v24Tag()
+
+    if (title.isNotBlank()) id3v2Tag.title = title
+    if (artist.isNotBlank()) id3v2Tag.artist = artist
+    if (album.isNotBlank()) id3v2Tag.album = album
+
+    mp3file.id3v2Tag = id3v2Tag
+
+    mp3file.save(taggedFile.absolutePath)
+
+    rawFile.delete()
+
+    return taggedFile
 }
 
 @Composable
@@ -141,10 +170,16 @@ fun SettingsScreen(
     user: User
 ) {
     val context = LocalContext.current
+    var selectedAudioUri by remember { mutableStateOf<Uri?>(null) }
+    var showUploadDialog by remember { mutableStateOf(false) }
+
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
-        uri?.let { user.id?.let { it1 -> uploadTrack(context, it, apiClient, viewModel, it1) } }
+        if (uri != null) {
+            selectedAudioUri = uri
+            showUploadDialog = true
+        }
     }
 
     val settingsNavController = rememberNavController()
@@ -249,7 +284,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = {
-                        if (!(user.roles == "ARTIST" || user.roles == "ADMIN")) {
+                        if (!(user.role == "ARTIST" || user.role == "ADMIN")) {
                             settingsNavController.navigate("failed_upload_screen")
                         } else {
                             launcher.launch("audio/*")
@@ -290,7 +325,7 @@ fun SettingsScreen(
                         )
                     }
                 }
-                if (user.roles == "ADMIN") {
+                if (user.role == "ARTIST" || user.role == "ADMIN") {
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = {
@@ -332,7 +367,7 @@ fun SettingsScreen(
                         }
                     }
                 }
-                if (user.roles == "ADMIN") {
+                if (user.role == "ADMIN") {
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = {
@@ -672,6 +707,21 @@ fun SettingsScreen(
                             }) {
                                 Text("Cancel")
                             }
+                        }
+                    )
+                }
+                if (showUploadDialog && selectedAudioUri != null) {
+                    UploadTrackDialog(
+                        uri = selectedAudioUri!!,
+                        context = context,
+                        onDismiss = {
+                            showUploadDialog = false
+                            selectedAudioUri = null
+                        },
+                        onUpload = { title, artist, album ->
+                            showUploadDialog = false
+                            uploadTrack(context, selectedAudioUri!!, title, artist, album, apiClient, viewModel, user.id!!)
+                            selectedAudioUri = null
                         }
                     )
                 }

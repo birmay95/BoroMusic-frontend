@@ -82,6 +82,8 @@ dependencies {
     implementation(libs.androidx.datastore.core.android)
     implementation(libs.accompanist.pager)
     implementation (libs.androidx.foundation)
+    implementation(libs.androidx.media.v170)
+    implementation(libs.mp3agic)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

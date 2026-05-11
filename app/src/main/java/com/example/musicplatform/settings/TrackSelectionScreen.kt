@@ -60,7 +60,7 @@ fun TrackSelectionScreen(
     val coroutineScope = rememberCoroutineScope()
     var trackList by remember {
         mutableStateOf(
-            if (user.roles.contains("ADMIN")) {
+            if (user.role.contains("ADMIN")) {
                 viewModel.sampleTracks.toMutableList()
             } else {
                 viewModel.sampleTracks.filter { it.uploadedBy == user.id }.toMutableList()

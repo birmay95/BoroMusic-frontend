@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -62,11 +63,15 @@ fun PlaylistDetailScreen(
     apiClient: ApiClient,
     onShowInfo: (Track) -> Unit,
     user: User,
-    onShowRecs: (Track) -> Unit
+    onShowRecs: (Track) -> Unit,
+    isPersonalFeed: Boolean = false
 ) {
     val playlistDetailNavController = rememberNavController()
-    val isUserPlaylist =
-        viewModel.sampleUserPlaylists.any { it.id == playlist.id } || user.roles == "ADMIN"
+    val isUserPlaylist = if (isPersonalFeed) {
+        false
+    } else {
+        viewModel.sampleUserPlaylists.any { it.id == playlist.id } || user.role == "ADMIN"
+    }
     NavHost(navController = playlistDetailNavController, startDestination = "playlist_detail") {
         composable("playlist_detail") {
             Column(

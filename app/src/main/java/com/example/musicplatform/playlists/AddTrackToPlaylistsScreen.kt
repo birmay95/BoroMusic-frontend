@@ -112,7 +112,7 @@ fun AddTrackToPlaylistsScreen(
         LazyColumn {
             items(filteredPlaylists) { playlist ->
                 val isUserPlaylist =
-                    viewModel.sampleUserPlaylists.any { it.id == playlist.id } || user.roles == "ADMIN"
+                    viewModel.sampleUserPlaylists.any { it.id == playlist.id } || user.role == "ADMIN"
                 if (isUserPlaylist) {
                     PlaylistCard(
                         playlist = playlist,
